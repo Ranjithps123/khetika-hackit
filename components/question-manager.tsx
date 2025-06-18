@@ -45,11 +45,11 @@ export function QuestionManager() {
     const newQuestion: Question = {
       id: "",
       title: "",
-      question: "",
+      question_text: "",
       type: "short-answer",
       points: 0,
       rubric: "",
-      sample_answer: "",
+      expected_answer: "",
       keywords: [],
     }
     setEditingQuestion(newQuestion)
@@ -62,7 +62,7 @@ export function QuestionManager() {
     setSaving(true)
     try {
       // Validate required fields
-      if (!editingQuestion.title || !editingQuestion.question) {
+      if (!editingQuestion.title || !editingQuestion.question_text) {
         toast({
           title: "Missing Information",
           description: "Please fill in all required fields.",
@@ -209,11 +209,13 @@ export function QuestionManager() {
             </div>
 
             <div>
-              <Label htmlFor="question">Question Text</Label>
+              <Label htmlFor="question_text">Question Text</Label>
               <Textarea
-                id="question"
-                value={editingQuestion.question}
-                onChange={(e) => setEditingQuestion((prev) => (prev ? { ...prev, question: e.target.value } : null))}
+                id="question_text"
+                value={editingQuestion.question_text}
+                onChange={(e) =>
+                  setEditingQuestion((prev) => (prev ? { ...prev, question_text: e.target.value } : null))
+                }
                 placeholder="Enter the question"
                 rows={3}
               />
@@ -246,14 +248,14 @@ export function QuestionManager() {
             </div>
 
             <div>
-              <Label htmlFor="sample">Sample Answer</Label>
+              <Label htmlFor="expected_answer">Expected Answer</Label>
               <Textarea
-                id="sample"
-                value={editingQuestion.sample_answer}
+                id="expected_answer"
+                value={editingQuestion.expected_answer}
                 onChange={(e) =>
-                  setEditingQuestion((prev) => (prev ? { ...prev, sample_answer: e.target.value } : null))
+                  setEditingQuestion((prev) => (prev ? { ...prev, expected_answer: e.target.value } : null))
                 }
-                placeholder="Provide a sample correct answer"
+                placeholder="Provide the expected correct answer"
                 rows={2}
               />
             </div>
@@ -307,9 +309,9 @@ export function QuestionManager() {
                     <Badge className={getTypeColor(question.type)}>{question.type.replace("-", " ")}</Badge>
                     <Badge variant="outline">{question.points} pts</Badge>
                   </div>
-                  <p className="text-sm text-gray-600 mb-2">{question.question}</p>
+                  <p className="text-sm text-gray-600 mb-2">{question.question_text}</p>
                   <p className="text-xs text-gray-500">
-                    <strong>Sample:</strong> {question.sample_answer}
+                    <strong>Expected Answer:</strong> {question.expected_answer}
                   </p>
                   {question.keywords && question.keywords.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">

@@ -9,11 +9,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 export type Question = {
   id: string
   title: string
-  question: string
+  question_text: string
   type: "multiple-choice" | "short-answer" | "essay"
   points: number
   rubric: string
-  sample_answer: string
+  expected_answer: string
   keywords: string[]
   created_at?: string
 }
