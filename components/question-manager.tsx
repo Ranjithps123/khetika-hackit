@@ -12,7 +12,7 @@ import { Plus, Edit, Trash2, Save, Loader2 } from "lucide-react"
 import { fetchQuestions, createQuestion, updateQuestion, deleteQuestion, type Question } from "@/lib/supabase"
 import { toast } from "@/hooks/use-toast"
 
-export function QuestionManager() {
+export default function QuestionManager() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null)
   const [isCreating, setIsCreating] = useState(false)
@@ -45,11 +45,11 @@ export function QuestionManager() {
     const newQuestion: Question = {
       id: "",
       title: "",
-      question_text: "",
+      question: "",
       type: "short-answer",
       points: 0,
       rubric: "",
-      expected_answer: "",
+      sample_answer: "",
       keywords: [],
     }
     setEditingQuestion(newQuestion)
@@ -62,7 +62,7 @@ export function QuestionManager() {
     setSaving(true)
     try {
       // Validate required fields
-      if (!editingQuestion.title || !editingQuestion.question_text) {
+      if (!editingQuestion.title || !editingQuestion.question) {
         toast({
           title: "Missing Information",
           description: "Please fill in all required fields.",
@@ -209,12 +209,12 @@ export function QuestionManager() {
             </div>
 
             <div>
-              <Label htmlFor="question_text">Question Text</Label>
+              <Label htmlFor="question">Question Text</Label>
               <Textarea
-                id="question_text"
-                value={editingQuestion.question_text}
+                id="question"
+                value={editingQuestion.question}
                 onChange={(e) =>
-                  setEditingQuestion((prev) => (prev ? { ...prev, question_text: e.target.value } : null))
+                  setEditingQuestion((prev) => (prev ? { ...prev, question: e.target.value } : null))
                 }
                 placeholder="Enter the question"
                 rows={3}
@@ -248,12 +248,12 @@ export function QuestionManager() {
             </div>
 
             <div>
-              <Label htmlFor="expected_answer">Expected Answer</Label>
+              <Label htmlFor="sample_answer">Expected Answer</Label>
               <Textarea
-                id="expected_answer"
-                value={editingQuestion.expected_answer}
+                id="sample_answer"
+                value={editingQuestion.sample_answer}
                 onChange={(e) =>
-                  setEditingQuestion((prev) => (prev ? { ...prev, expected_answer: e.target.value } : null))
+                  setEditingQuestion((prev) => (prev ? { ...prev, sample_answer: e.target.value } : null))
                 }
                 placeholder="Provide the expected correct answer"
                 rows={2}
@@ -309,9 +309,9 @@ export function QuestionManager() {
                     <Badge className={getTypeColor(question.type)}>{question.type.replace("-", " ")}</Badge>
                     <Badge variant="outline">{question.points} pts</Badge>
                   </div>
-                  <p className="text-sm text-gray-600 mb-2">{question.question_text}</p>
+                  <p className="text-sm text-gray-600 mb-2">{question.question}</p>
                   <p className="text-xs text-gray-500">
-                    <strong>Expected Answer:</strong> {question.expected_answer}
+                    <strong>Expected Answer:</strong> {question.sample_answer}
                   </p>
                   {question.keywords && question.keywords.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">

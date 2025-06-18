@@ -31,7 +31,7 @@ interface StudentPerformance {
   status: string
 }
 
-export function ReportsView() {
+export default function ReportsView() {
   const [stats, setStats] = useState<ReportStats>({
     totalSubmissions: 0,
     evaluated: 0,

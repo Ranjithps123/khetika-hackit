@@ -24,7 +24,7 @@ interface StudentAnswer {
   final_score?: number
 }
 
-export function EvaluationInterface() {
+export default function EvaluationInterface() {
   const [answers, setAnswers] = useState<StudentAnswer[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedAnswer, setSelectedAnswer] = useState<StudentAnswer | null>(null)
