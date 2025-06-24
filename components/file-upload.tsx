@@ -9,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Upload, File, FileText, X, CheckCircle, ImageIcon } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { fetchQuestions, createEvaluation, type Question } from "@/lib/supabase"
 import { toast } from "@/hooks/use-toast"
 
@@ -27,7 +26,7 @@ interface UploadedFile {
 export function FileUpload() {
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [questions, setQuestions] = useState<Question[]>([])
-  const [selectedQuestionId, setSelectedQuestionId] = useState<string>("")
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([])
   const [studentName, setStudentName] = useState<string>("")
   const [loading, setLoading] = useState(true)
 
@@ -38,7 +37,7 @@ export function FileUpload() {
         const questions = await fetchQuestions()
         setQuestions(questions)
         if (questions.length > 0) {
-          setSelectedQuestionId(questions[0].id)
+          setSelectedQuestionIds([questions[0].id])
         }
       } catch (error) {
         console.error("Failed to load questions:", error)
@@ -191,10 +190,10 @@ breathe and is the foundation of the food chain.`
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
-      if (!selectedQuestionId) {
+      if (selectedQuestionIds.length === 0) {
         toast({
-          title: "No question selected",
-          description: "Please select a question before uploading files.",
+          title: "No questions selected",
+          description: "Please select at least one question before uploading files.",
           variant: "destructive",
         })
         return
@@ -217,7 +216,7 @@ breathe and is the foundation of the food chain.`
         processFile(fileData.id, fileData.file)
       })
     },
-    [studentName, selectedQuestionId],
+    [studentName, selectedQuestionIds],
   )
 
   const processFile = async (fileId: string, file: File) => {
@@ -294,51 +293,48 @@ breathe and is the foundation of the food chain.`
 
   const evaluateAnswer = async (fileId: string, extractedText: string) => {
     try {
-      if (!selectedQuestionId) {
+      if (selectedQuestionIds.length === 0) {
         toast({
           title: "Error",
-          description: "No question selected for evaluation",
+          description: "No questions selected for evaluation",
           variant: "destructive",
         })
         return
       }
 
-      const question = questions.find((q) => q.id === selectedQuestionId)
-      if (!question) {
-        toast({
-          title: "Error",
-          description: "Selected question not found",
-          variant: "destructive",
-        })
-        return
+      // Evaluate against all selected questions
+      for (const questionId of selectedQuestionIds) {
+        const question = questions.find((q) => q.id === questionId)
+        if (!question) {
+          console.warn(`Question with id ${questionId} not found`)
+          continue
+        }
+
+        // Perform evaluation logic
+        const evaluationResult = evaluateExtractedText(extractedText, question)
+
+        // Sanitize all text fields before saving to database
+        const sanitizedEvaluation = {
+          file_id: fileId,
+          student_name: sanitizeText(studentName || "Anonymous Student"),
+          question_id: questionId,
+          extracted_answer: sanitizeText(extractedText),
+          score: evaluationResult.score,
+          max_points: question.points,
+          confidence: evaluationResult.confidence,
+          feedback: sanitizeText(evaluationResult.feedback),
+          rubric_match: evaluationResult.rubricMatch.map((keyword) => sanitizeText(keyword)),
+          status: "pending" as const,
+        }
+
+        // Save to Supabase
+        await createEvaluation(sanitizedEvaluation)
       }
 
-      // Perform evaluation logic
-      const evaluationResult = evaluateExtractedText(extractedText, question)
-
-      // Sanitize all text fields before saving to database
-      const sanitizedEvaluation = {
-        file_id: fileId,
-        student_name: sanitizeText(studentName || "Anonymous Student"),
-        question_id: selectedQuestionId,
-        extracted_answer: sanitizeText(extractedText),
-        score: evaluationResult.score,
-        max_points: question.points,
-        confidence: evaluationResult.confidence,
-        feedback: sanitizeText(evaluationResult.feedback),
-        rubric_match: evaluationResult.rubricMatch.map((keyword) => sanitizeText(keyword)),
-        status: "pending" as const,
-      }
-
-      // Save to Supabase
-      const result = await createEvaluation(sanitizedEvaluation)
-
-      if (result) {
-        toast({
-          title: "Evaluation Complete",
-          description: `Score: ${evaluationResult.score}/${question.points}`,
-        })
-      }
+      toast({
+        title: "Evaluation Complete",
+        description: `File evaluated against ${selectedQuestionIds.length} question${selectedQuestionIds.length !== 1 ? "s" : ""}`,
+      })
     } catch (error) {
       console.error("Evaluation failed:", error)
       toast({
@@ -433,19 +429,43 @@ breathe and is the foundation of the food chain.`
           />
         </div>
         <div>
-          <Label htmlFor="question-select">Select Question</Label>
-          <Select value={selectedQuestionId} onValueChange={setSelectedQuestionId} disabled={loading}>
-            <SelectTrigger>
-              <SelectValue placeholder={loading ? "Loading questions..." : "Choose a question"} />
-            </SelectTrigger>
-            <SelectContent>
-              {questions.map((question) => (
-                <SelectItem key={question.id} value={question.id}>
-                  {question.title} ({question.points} pts)
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label>Select Questions</Label>
+          <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
+            {loading ? (
+              <p className="text-sm text-gray-500">Loading questions...</p>
+            ) : questions.length > 0 ? (
+              questions.map((question) => (
+                <div key={question.id} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id={`question-${question.id}`}
+                    checked={selectedQuestionIds.includes(question.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedQuestionIds((prev) => [...prev, question.id])
+                      } else {
+                        setSelectedQuestionIds((prev) => prev.filter((id) => id !== question.id))
+                      }
+                    }}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <label htmlFor={`question-${question.id}`} className="text-sm font-medium cursor-pointer flex-1">
+                    {question.title} ({question.points} pts)
+                  </label>
+                  <Badge variant="outline" className="text-xs">
+                    {question.type.replace("-", " ")}
+                  </Badge>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-500">No questions available</p>
+            )}
+          </div>
+          {selectedQuestionIds.length > 0 && (
+            <p className="text-xs text-gray-600 mt-1">
+              {selectedQuestionIds.length} question{selectedQuestionIds.length !== 1 ? "s" : ""} selected
+            </p>
+          )}
         </div>
       </div>
       <div
