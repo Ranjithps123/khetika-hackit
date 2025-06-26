@@ -52,34 +52,118 @@ export async function signOut() {
 }
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase.from("user_profiles").select("*").eq("id", userId).single()
+  try {
+    // First, try to fetch the profile without .single() to handle multiple/no rows
+    const { data, error } = await supabase.from("user_profiles").select("*").eq("id", userId)
 
-  if (error) {
-    console.error("Error fetching user profile:", error)
-    return null
+    if (error) {
+      console.error("Error fetching user profile:", error)
+
+      // If the table doesn't exist, create a default profile
+      if (error.code === "42P01") {
+        console.log("User profiles table doesn't exist, creating default profile...")
+        return await createDefaultUserProfile(userId)
+      }
+
+      return await createDefaultUserProfile(userId)
+    }
+
+    // Handle the response
+    if (!data || data.length === 0) {
+      console.log("No user profile found, creating default profile...")
+      return await createDefaultUserProfile(userId)
+    }
+
+    // If multiple profiles exist, take the first one and clean up
+    if (data.length > 1) {
+      console.warn(`Multiple profiles found for user ${userId}, using the first one`)
+      // Optionally, you could clean up duplicate profiles here
+      return data[0]
+    }
+
+    return data[0]
+  } catch (error) {
+    console.error("Error in getUserProfile:", error)
+    return await createDefaultUserProfile(userId)
   }
+}
 
-  return data
+async function createDefaultUserProfile(userId: string): Promise<UserProfile | null> {
+  try {
+    // Get user info from auth
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      console.error("Error getting user for profile creation:", userError)
+      // Return a basic default profile
+      return {
+        id: userId,
+        email: "",
+        full_name: "",
+        user_type: "user",
+      }
+    }
+
+    const defaultProfile: Omit<UserProfile, "created_at"> = {
+      id: userId,
+      email: user.email || "",
+      full_name: user.user_metadata?.full_name || "",
+      user_type: "user",
+    }
+
+    // Try to insert the profile with upsert to handle conflicts
+    const { data, error } = await supabase.from("user_profiles").upsert([defaultProfile], { onConflict: "id" }).select()
+
+    if (error) {
+      console.error("Error creating default user profile:", error)
+      // Return the default profile even if we can't save it
+      return defaultProfile
+    }
+
+    return data?.[0] || defaultProfile
+  } catch (error) {
+    console.error("Error creating default user profile:", error)
+    // Return a basic profile as fallback
+    return {
+      id: userId,
+      email: "",
+      full_name: "",
+      user_type: "user",
+    }
+  }
 }
 
 export async function updateUserProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile | null> {
-  const { data, error } = await supabase.from("user_profiles").update(updates).eq("id", userId).select().single()
+  try {
+    const { data, error } = await supabase.from("user_profiles").update(updates).eq("id", userId).select()
 
-  if (error) {
+    if (error) {
+      console.error("Error updating user profile:", error)
+      return null
+    }
+
+    return data?.[0] || null
+  } catch (error) {
     console.error("Error updating user profile:", error)
     return null
   }
-
-  return data
 }
 
 export async function makeUserAdmin(userId: string): Promise<boolean> {
-  const { error } = await supabase.from("user_profiles").update({ user_type: "admin" }).eq("id", userId)
+  try {
+    const { error } = await supabase.from("user_profiles").update({ user_type: "admin" }).eq("id", userId)
 
-  if (error) {
+    if (error) {
+      console.error("Error making user admin:", error)
+      return false
+    }
+
+    return true
+  } catch (error) {
     console.error("Error making user admin:", error)
     return false
   }
-
-  return true
 }

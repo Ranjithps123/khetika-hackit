@@ -42,6 +42,7 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
       })
       onSuccess?.()
     } catch (error: any) {
+      console.error("Sign in error:", error)
       toast({
         title: "Sign In Failed",
         description: error.message || "Please check your credentials and try again.",
@@ -79,10 +80,16 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
       await signUp(signUpEmail, signUpPassword, signUpFullName)
       toast({
         title: "Account Created!",
-        description: "Please check your email to verify your account.",
+        description: "Please check your email to verify your account, then sign in.",
       })
       setActiveTab("signin")
+      // Clear signup form
+      setSignUpEmail("")
+      setSignUpPassword("")
+      setSignUpFullName("")
+      setConfirmPassword("")
     } catch (error: any) {
+      console.error("Sign up error:", error)
       toast({
         title: "Sign Up Failed",
         description: error.message || "Please try again.",
@@ -239,6 +246,10 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
           <div className="mt-6 text-center text-sm text-gray-600">
             <p className="mb-2">🚀 Ready to hack it?</p>
             <p className="text-xs">4 days • Individual participation • Amazing prizes</p>
+            <div className="mt-3 p-2 bg-blue-50 rounded text-xs">
+              <p className="font-medium">Demo Account:</p>
+              <p>test@example.com / password123</p>
+            </div>
           </div>
         </CardContent>
       </Card>

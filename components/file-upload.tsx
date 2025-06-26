@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Upload, File, X, CheckCircle, GitBranch, Globe } from "lucide-react"
+import { Upload, File, X, CheckCircle, GitBranch, Globe, User } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { fetchThemes, createSubmission, type Theme } from "@/lib/supabase"
+import { useAuth } from "@/components/auth/auth-provider"
 import { toast } from "@/hooks/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -25,11 +26,13 @@ interface UploadedFile {
 }
 
 export function FileUpload() {
+  const { user, profile } = useAuth()
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [themes, setThemes] = useState<Theme[]>([])
   const [selectedThemeId, setSelectedThemeId] = useState<string>("")
   const [projectTitle, setProjectTitle] = useState<string>("")
   const [projectDescription, setProjectDescription] = useState<string>("")
+  const [participantName, setParticipantName] = useState<string>("")
   const [applicationUrl, setApplicationUrl] = useState<string>("")
   const [gitlabUrl, setGitlabUrl] = useState<string>("")
   const [loading, setLoading] = useState(true)
@@ -58,6 +61,15 @@ export function FileUpload() {
 
     loadThemes()
   }, [])
+
+  useEffect(() => {
+    // Set default participant name from user profile
+    if (profile) {
+      setParticipantName(profile.full_name || profile.email || "")
+    } else if (user) {
+      setParticipantName(user.email || "")
+    }
+  }, [user, profile])
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map((file) => ({
@@ -121,6 +133,15 @@ export function FileUpload() {
       return
     }
 
+    if (!participantName.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter your name.",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (!selectedThemeId) {
       toast({
         title: "Missing Information",
@@ -142,7 +163,10 @@ export function FileUpload() {
     setSubmitting(true)
 
     try {
+      // Create submission without user_id to avoid schema cache issues
       const submission = {
+        team_name: participantName.trim(), // Use participant name as team name for individual participation
+        team_members: null, // No team members for individual participation
         project_title: projectTitle.trim(),
         project_description: projectDescription.trim(),
         theme_id: selectedThemeId,
@@ -151,6 +175,8 @@ export function FileUpload() {
         pdf_file_name: files[0]?.name || null,
         status: "submitted" as const,
       }
+
+      console.log("Submitting:", submission)
 
       const result = await createSubmission(submission)
 
@@ -167,11 +193,11 @@ export function FileUpload() {
         setGitlabUrl("")
         setFiles([])
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Submission failed:", error)
       toast({
         title: "Submission Failed",
-        description: "There was an error submitting your project. Please try again.",
+        description: error.message || "There was an error submitting your project. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -204,8 +230,25 @@ export function FileUpload() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Project Information */}
+          {/* Participant Information */}
           <div className="space-y-4">
+            <div>
+              <Label htmlFor="participant-name" className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Your Name *
+              </Label>
+              <Input
+                id="participant-name"
+                value={participantName}
+                onChange={(e) => setParticipantName(e.target.value)}
+                placeholder="Enter your full name"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                This will be used as your participant identifier for individual participation
+              </p>
+            </div>
+
             <div>
               <Label htmlFor="project-title">Project Title *</Label>
               <Input
@@ -348,6 +391,7 @@ export function FileUpload() {
             <div>
               <h4 className="font-medium mb-2">Required:</h4>
               <ul className="space-y-1 text-gray-600">
+                <li>• Your full name (individual participation)</li>
                 <li>• Project title and description</li>
                 <li>• Select one theme from the available options</li>
                 <li>• Either application URL or GitLab repository</li>
@@ -361,6 +405,7 @@ export function FileUpload() {
                 <li>• Explain your technical approach</li>
                 <li>• Highlight innovation and impact</li>
                 <li>• Test your URLs before submitting</li>
+                <li>• Individual participation - showcase your skills!</li>
               </ul>
             </div>
           </div>

@@ -24,8 +24,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = async () => {
     if (user) {
-      const userProfile = await getUserProfile(user.id)
+      try {
+        const userProfile = await getUserProfile(user.id)
+        setProfile(userProfile)
+      } catch (error) {
+        console.error("Error refreshing profile:", error)
+        // Set a default profile if we can't fetch it
+        setProfile({
+          id: user.id,
+          email: user.email || "",
+          full_name: user.user_metadata?.full_name || "",
+          user_type: "user",
+        })
+      }
+    }
+  }
+
+  const loadUserProfile = async (currentUser: User) => {
+    try {
+      const userProfile = await getUserProfile(currentUser.id)
       setProfile(userProfile)
+    } catch (error) {
+      console.error("Error loading user profile:", error)
+      // Set a default profile if we can't fetch it
+      const defaultProfile: UserProfile = {
+        id: currentUser.id,
+        email: currentUser.email || "",
+        full_name: currentUser.user_metadata?.full_name || "",
+        user_type: "user",
+      }
+      setProfile(defaultProfile)
     }
   }
 
@@ -48,8 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(currentUser)
 
         if (currentUser) {
-          const userProfile = await getUserProfile(currentUser.id)
-          setProfile(userProfile)
+          await loadUserProfile(currentUser)
         }
       } catch (error) {
         console.error("Error getting initial session:", error)
@@ -69,8 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null)
 
       if (session?.user) {
-        const userProfile = await getUserProfile(session.user.id)
-        setProfile(userProfile)
+        await loadUserProfile(session.user)
       } else {
         setProfile(null)
       }
