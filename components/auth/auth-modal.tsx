@@ -98,9 +98,9 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-            Khetika Hackathon 2024
+            Khetika - Hack it
           </CardTitle>
-          <p className="text-gray-600">Sign in to submit your project</p>
+          <p className="text-gray-600">Join the 4-day hackathon challenge</p>
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -228,7 +228,7 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
                   ) : (
                     <>
                       <UserPlus className="h-4 w-4 mr-2" />
-                      Sign Up
+                      Join Hackathon
                     </>
                   )}
                 </Button>
@@ -237,8 +237,8 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
           </Tabs>
 
           <div className="mt-6 text-center text-sm text-gray-600">
-            <p>Demo Admin Account:</p>
-            <p className="font-mono text-xs">admin@khetika.com / admin123</p>
+            <p className="mb-2">🚀 Ready to hack it?</p>
+            <p className="text-xs">4 days • Individual participation • Amazing prizes</p>
           </div>
         </CardContent>
       </Card>

@@ -5,6 +5,7 @@ import SubmissionInterface from "@/components/submission-interface"
 import ReportsView from "@/components/reports-view"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { Navbar } from "@/components/navbar"
+import { HackathonInfo } from "@/components/hackathon-info"
 
 export default function Home() {
   return (
@@ -13,22 +14,32 @@ export default function Home() {
         <Navbar />
         <main className="container mx-auto py-10">
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-              Submit Your Innovation
+            <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+              Khetika - Hack it
             </h1>
-            <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+            <p className="text-lg text-gray-600 max-w-3xl mx-auto mb-6">
               Build innovative solutions for India's agricultural supply chain. Choose a theme, develop your solution,
               and submit your project to compete for exciting prizes!
             </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto">
+              <p className="text-blue-800 font-medium">
+                📅 4-Day Hackathon | Individual Participation | Showcase on Monday Standup
+              </p>
+            </div>
           </div>
 
-          <Tabs defaultValue="submit" className="w-full">
-            <TabsList className="grid grid-cols-4 mb-8">
+          <Tabs defaultValue="info" className="w-full">
+            <TabsList className="grid grid-cols-5 mb-8">
+              <TabsTrigger value="info">Hackathon Info</TabsTrigger>
               <TabsTrigger value="submit">Submit Project</TabsTrigger>
               <TabsTrigger value="themes">Themes</TabsTrigger>
               <TabsTrigger value="submissions">My Submissions</TabsTrigger>
               <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="info">
+              <HackathonInfo />
+            </TabsContent>
 
             <TabsContent value="submit">
               <FileUpload />

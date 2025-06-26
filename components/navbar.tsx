@@ -15,7 +15,7 @@ export function Navbar() {
       <div className="container mx-auto px-4 py-3 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-            Khetika Hackathon 2024
+            Khetika - Hack it
           </h1>
           {isAdmin && (
             <Badge variant="secondary" className="flex items-center gap-1">
