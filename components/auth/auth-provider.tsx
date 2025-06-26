@@ -4,7 +4,7 @@ import type React from "react"
 
 import { createContext, useContext, useEffect, useState } from "react"
 import type { User } from "@supabase/supabase-js"
-import { supabase, getUserProfile, type UserProfile } from "@/lib/auth"
+import { supabase, type UserProfile } from "@/lib/auth"
 
 interface AuthContextType {
   user: User | null
@@ -22,98 +22,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const refreshProfile = async () => {
-    if (user) {
-      try {
-        const userProfile = await getUserProfile(user.id)
-        setProfile(userProfile)
-      } catch (error) {
-        console.error("Error refreshing profile:", error)
-        // Set a basic default profile
-        setProfile({
-          id: user.id,
-          email: user.email || "",
-          full_name: user.user_metadata?.full_name || "",
-          user_type: "user",
-        })
-      }
+  // Create immediate profile from user data
+  const createImmediateProfile = (currentUser: User): UserProfile => {
+    return {
+      id: currentUser.id,
+      email: currentUser.email || "",
+      full_name: currentUser.user_metadata?.full_name || currentUser.email?.split("@")[0] || "",
+      user_type: "user",
     }
   }
 
-  const loadUserProfile = async (currentUser: User) => {
-    try {
-      // Set a basic profile immediately to prevent loading issues
-      const basicProfile: UserProfile = {
-        id: currentUser.id,
-        email: currentUser.email || "",
-        full_name: currentUser.user_metadata?.full_name || "",
-        user_type: "user",
-      }
-      setProfile(basicProfile)
-
-      // Try to fetch the full profile in the background
-      const userProfile = await getUserProfile(currentUser.id)
-      if (userProfile) {
-        setProfile(userProfile)
-      }
-    } catch (error) {
-      console.error("Error loading user profile:", error)
-      // Keep the basic profile we already set
+  const refreshProfile = async () => {
+    if (user) {
+      // Just refresh with current user data - no database calls
+      setProfile(createImmediateProfile(user))
     }
   }
 
   useEffect(() => {
     let mounted = true
 
-    // Get initial session
-    const getInitialSession = async () => {
+    // Simplified session handling - no async profile loading
+    const initializeAuth = async () => {
       try {
         const {
           data: { session },
-          error,
         } = await supabase.auth.getSession()
 
         if (!mounted) return
-
-        if (error) {
-          console.error("Error getting session:", error)
-          setLoading(false)
-          return
-        }
 
         const currentUser = session?.user || null
         setUser(currentUser)
 
         if (currentUser) {
-          await loadUserProfile(currentUser)
+          // Set profile immediately from user data
+          setProfile(createImmediateProfile(currentUser))
         }
+
+        setLoading(false)
       } catch (error) {
-        console.error("Error getting initial session:", error)
-        if (mounted) {
-          setUser(null)
-          setProfile(null)
-        }
-      } finally {
+        console.error("Error initializing auth:", error)
         if (mounted) {
           setLoading(false)
         }
       }
     }
 
-    getInitialSession()
+    initializeAuth()
 
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return
 
-      console.log("Auth state changed:", event, session?.user?.email)
+      const currentUser = session?.user ?? null
+      setUser(currentUser)
 
-      setUser(session?.user ?? null)
-
-      if (session?.user) {
-        await loadUserProfile(session.user)
+      if (currentUser) {
+        setProfile(createImmediateProfile(currentUser))
       } else {
         setProfile(null)
       }
@@ -129,10 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleSignOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        console.error("Error signing out:", error)
-      }
+      await supabase.auth.signOut()
       setUser(null)
       setProfile(null)
     } catch (error) {
@@ -140,7 +104,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const isAdmin = profile?.user_type === "admin"
+  // For now, assume all users are regular users (not admin)
+  // This can be enhanced later with proper admin detection
+  const isAdmin = false
 
   return (
     <AuthContext.Provider

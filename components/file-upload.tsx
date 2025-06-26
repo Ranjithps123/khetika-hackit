@@ -63,11 +63,13 @@ export function FileUpload() {
   }, [])
 
   useEffect(() => {
-    // Set default participant name from user profile
-    if (profile) {
-      setParticipantName(profile.full_name || profile.email || "")
-    } else if (user) {
-      setParticipantName(user.email || "")
+    // Set default participant name from user data
+    if (profile?.full_name) {
+      setParticipantName(profile.full_name)
+    } else if (profile?.email) {
+      setParticipantName(profile.email.split("@")[0])
+    } else if (user?.email) {
+      setParticipantName(user.email.split("@")[0])
     }
   }, [user, profile])
 
@@ -163,10 +165,9 @@ export function FileUpload() {
     setSubmitting(true)
 
     try {
-      // Create submission without user_id to avoid schema cache issues
       const submission = {
-        team_name: participantName.trim(), // Use participant name as team name for individual participation
-        team_members: null, // No team members for individual participation
+        team_name: participantName.trim(),
+        team_members: null,
         project_title: projectTitle.trim(),
         project_description: projectDescription.trim(),
         theme_id: selectedThemeId,

@@ -51,37 +51,19 @@ export async function signOut() {
   }
 }
 
+// Simplified - no longer used in auth flow to prevent blocking
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   try {
-    // Simple profile fetch without timeout - let Supabase handle its own timeouts
     const { data, error } = await supabase.from("user_profiles").select("*").eq("id", userId).maybeSingle()
 
-    if (error) {
-      console.error("Error fetching user profile:", error)
-      return createDefaultUserProfile(userId)
-    }
-
-    // If no profile found, create default
-    if (!data) {
-      console.log("No user profile found, creating default profile...")
-      return createDefaultUserProfile(userId)
+    if (error || !data) {
+      return null
     }
 
     return data
   } catch (error) {
-    console.error("Error in getUserProfile:", error)
-    return createDefaultUserProfile(userId)
-  }
-}
-
-function createDefaultUserProfile(userId: string): UserProfile {
-  // Return a simple default profile without trying to fetch user data or save to DB
-  // This prevents cascading failures and timeouts
-  return {
-    id: userId,
-    email: "",
-    full_name: "",
-    user_type: "user",
+    console.error("Error fetching user profile:", error)
+    return null
   }
 }
 
