@@ -1,3 +1,5 @@
+"use client"
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileUpload } from "@/components/file-upload"
 import ThemeManager from "@/components/theme-manager"
@@ -6,6 +8,7 @@ import ReportsView from "@/components/reports-view"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { Navbar } from "@/components/navbar"
 import { HackathonInfo } from "@/components/hackathon-info"
+import { useAuth } from "@/components/auth/auth-provider"
 
 export default function Home() {
   return (
@@ -28,37 +31,47 @@ export default function Home() {
             </div>
           </div>
 
-          <Tabs defaultValue="info" className="w-full">
-            <TabsList className="grid grid-cols-5 mb-8">
-              <TabsTrigger value="info">Hackathon Info</TabsTrigger>
-              <TabsTrigger value="submit">Submit Project</TabsTrigger>
-              <TabsTrigger value="themes">Themes</TabsTrigger>
-              <TabsTrigger value="submissions">My Submissions</TabsTrigger>
-              <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="info">
-              <HackathonInfo />
-            </TabsContent>
-
-            <TabsContent value="submit">
-              <FileUpload />
-            </TabsContent>
-
-            <TabsContent value="themes">
-              <ThemeManager />
-            </TabsContent>
-
-            <TabsContent value="submissions">
-              <SubmissionInterface />
-            </TabsContent>
-
-            <TabsContent value="leaderboard">
-              <ReportsView />
-            </TabsContent>
-          </Tabs>
+          <HomeContent />
         </main>
       </div>
     </ProtectedRoute>
+  )
+}
+
+function HomeContent() {
+  const { isAdmin } = useAuth()
+
+  return (
+    <Tabs defaultValue="info" className="w-full">
+      <TabsList className={`grid mb-8 ${isAdmin ? "grid-cols-5" : "grid-cols-4"}`}>
+        <TabsTrigger value="info">Hackathon Info</TabsTrigger>
+        <TabsTrigger value="submit">Submit Project</TabsTrigger>
+        <TabsTrigger value="themes">Themes</TabsTrigger>
+        {isAdmin && <TabsTrigger value="submissions">Review Submissions</TabsTrigger>}
+        <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="info">
+        <HackathonInfo />
+      </TabsContent>
+
+      <TabsContent value="submit">
+        <FileUpload />
+      </TabsContent>
+
+      <TabsContent value="themes">
+        <ThemeManager />
+      </TabsContent>
+
+      {isAdmin && (
+        <TabsContent value="submissions">
+          <SubmissionInterface />
+        </TabsContent>
+      )}
+
+      <TabsContent value="leaderboard">
+        <ReportsView />
+      </TabsContent>
+    </Tabs>
   )
 }

@@ -185,6 +185,8 @@ export async function createSubmission(submission: Omit<Submission, "id" | "crea
       throw new Error("User not authenticated")
     }
 
+    console.log("Creating submission for user:", session.user.id, session.user.email)
+
     // Get user profile to use for team_name
     let teamName = submission.team_name
     if (!teamName) {
@@ -196,7 +198,7 @@ export async function createSubmission(submission: Omit<Submission, "id" | "crea
           .limit(1)
 
         if (profile && profile.length > 0) {
-          teamName = profile[0].full_name || profile[0].email || "Individual Participant"
+          teamName = profile[0].full_name || profile[0].email || session.user.email || "Individual Participant"
         } else {
           teamName = session.user.email || "Individual Participant"
         }
@@ -206,9 +208,15 @@ export async function createSubmission(submission: Omit<Submission, "id" | "crea
       }
     }
 
-    // Create submission data WITHOUT user_id to avoid schema cache issues
+    // Ensure we have a valid team name
+    if (!teamName || teamName.trim() === "") {
+      teamName = session.user.email || "Individual Participant"
+    }
+
+    // Create submission data WITH user_id
     const submissionData = {
-      team_name: teamName,
+      user_id: session.user.id, // Include user_id
+      team_name: teamName.trim(),
       team_members: submission.team_members || null,
       project_title: submission.project_title,
       project_description: submission.project_description,
@@ -224,13 +232,37 @@ export async function createSubmission(submission: Omit<Submission, "id" | "crea
 
     console.log("Creating submission with data:", submissionData)
 
+    // Try to insert with user_id first
     const { data, error } = await supabase.from("submissions").insert([submissionData]).select()
 
     if (error) {
-      console.error("Error creating submission:", error)
+      console.error("Error creating submission with user_id:", error)
+
+      // If user_id column doesn't exist, try without it as fallback
+      if (error.code === "42703" || error.message?.includes("user_id")) {
+        console.log("user_id column not found, trying without user_id...")
+
+        const fallbackData = { ...submissionData }
+        delete fallbackData.user_id
+
+        const { data: fallbackResult, error: fallbackError } = await supabase
+          .from("submissions")
+          .insert([fallbackData])
+          .select()
+
+        if (fallbackError) {
+          console.error("Error creating submission without user_id:", fallbackError)
+          throw fallbackError
+        }
+
+        console.log("Submission created without user_id (fallback)")
+        return fallbackResult?.[0] || null
+      }
+
       throw error
     }
 
+    console.log("Submission created successfully with user_id")
     return data?.[0] || null
   } catch (error) {
     console.error("Error creating submission:", error)
@@ -240,48 +272,71 @@ export async function createSubmission(submission: Omit<Submission, "id" | "crea
 
 export async function fetchSubmissions(): Promise<Submission[]> {
   try {
-    // First try to fetch with joins
-    const { data, error } = await supabase
+    console.log("Fetching all submissions...")
+
+    // Fetch submissions without joins to avoid relationship errors
+    const { data: submissionsData, error: submissionsError } = await supabase
       .from("submissions")
-      .select(`
-        *,
-        themes (
-          title,
-          icon
-        )
-      `)
+      .select("*")
       .order("created_at", { ascending: false })
 
-    if (error) {
-      console.error("Error fetching submissions with themes:", error)
-
-      // Fallback: fetch submissions without joins
-      const { data: submissionsData, error: submissionsError } = await supabase
-        .from("submissions")
-        .select("*")
-        .order("created_at", { ascending: false })
-
-      if (submissionsError) {
-        console.error("Error fetching submissions:", submissionsError)
-        return []
-      }
-
-      // Manually add theme data for fallback
-      const themes = await fetchThemes()
-      const submissionsWithThemes = (submissionsData || []).map((submission) => ({
-        ...submission,
-        themes: themes.find((t) => t.id === submission.theme_id)
-          ? {
-              title: themes.find((t) => t.id === submission.theme_id)!.title,
-              icon: themes.find((t) => t.id === submission.theme_id)!.icon,
-            }
-          : undefined,
-      }))
-
-      return submissionsWithThemes
+    if (submissionsError) {
+      console.error("Error fetching submissions:", submissionsError)
+      return []
     }
 
-    return data || []
+    console.log("Fetched submissions:", submissionsData?.length || 0)
+
+    // Fetch themes separately
+    const themes = await fetchThemes()
+    const themeMap = new Map(themes.map((theme) => [theme.id, theme]))
+
+    // Fetch user profiles separately for submissions that have user_id
+    const userIds = submissionsData
+      ?.filter((s) => s.user_id)
+      .map((s) => s.user_id)
+      .filter((id, index, arr) => arr.indexOf(id) === index) // unique user IDs
+
+    let userProfilesMap = new Map()
+
+    if (userIds && userIds.length > 0) {
+      try {
+        const { data: profiles, error: profilesError } = await supabase
+          .from("user_profiles")
+          .select("id, full_name, email")
+          .in("id", userIds)
+
+        if (!profilesError && profiles) {
+          userProfilesMap = new Map(profiles.map((profile) => [profile.id, profile]))
+          console.log("Fetched user profiles:", profiles.length)
+        } else {
+          console.log("Could not fetch user profiles:", profilesError)
+        }
+      } catch (error) {
+        console.log("Error fetching user profiles:", error)
+      }
+    }
+
+    // Combine the data
+    const enrichedSubmissions = (submissionsData || []).map((submission) => ({
+      ...submission,
+      themes: themeMap.get(submission.theme_id)
+        ? {
+            title: themeMap.get(submission.theme_id)!.title,
+            icon: themeMap.get(submission.theme_id)!.icon,
+          }
+        : undefined,
+      user_profiles:
+        submission.user_id && userProfilesMap.has(submission.user_id)
+          ? {
+              full_name: userProfilesMap.get(submission.user_id).full_name,
+              email: userProfilesMap.get(submission.user_id).email,
+            }
+          : undefined,
+    }))
+
+    console.log("Enriched submissions with themes and profiles")
+    return enrichedSubmissions
   } catch (error) {
     console.error("Error fetching submissions:", error)
     return []
@@ -300,59 +355,87 @@ export async function fetchUserSubmissions(): Promise<Submission[]> {
       return []
     }
 
-    // Since user_id column doesn't exist, we'll fetch all submissions
-    // and filter by team_name (which contains user info)
-    const { data, error } = await supabase
+    console.log("Fetching user submissions for:", session.user.id, session.user.email)
+
+    // First try to fetch by user_id if the column exists
+    const { data: userIdSubmissions, error: userIdError } = await supabase
       .from("submissions")
-      .select(`
-        *,
-        themes (
-          title,
-          icon
-        )
-      `)
+      .select("*")
+      .eq("user_id", session.user.id)
       .order("created_at", { ascending: false })
 
-    if (error) {
-      console.error("Error fetching user submissions:", error)
+    if (!userIdError && userIdSubmissions && userIdSubmissions.length > 0) {
+      console.log("Fetched user submissions by user_id:", userIdSubmissions.length)
 
-      // Fallback without joins
-      const { data: submissionsData, error: submissionsError } = await supabase
-        .from("submissions")
-        .select("*")
-        .order("created_at", { ascending: false })
-
-      if (submissionsError) {
-        console.error("Error fetching user submissions fallback:", submissionsError)
-        return []
-      }
-
-      // Add theme data manually
+      // Enrich with theme data
       const themes = await fetchThemes()
-      const submissionsWithThemes = (submissionsData || []).map((submission) => ({
+      const themeMap = new Map(themes.map((theme) => [theme.id, theme]))
+
+      const enrichedSubmissions = userIdSubmissions.map((submission) => ({
         ...submission,
-        themes: themes.find((t) => t.id === submission.theme_id)
+        themes: themeMap.get(submission.theme_id)
           ? {
-              title: themes.find((t) => t.id === submission.theme_id)!.title,
-              icon: themes.find((t) => t.id === submission.theme_id)!.icon,
+              title: themeMap.get(submission.theme_id)!.title,
+              icon: themeMap.get(submission.theme_id)!.icon,
             }
           : undefined,
       }))
 
-      return submissionsWithThemes
+      return enrichedSubmissions
     }
 
-    // Filter submissions by user email/name since we don't have user_id
-    const userEmail = session.user.email
+    console.log("user_id query returned no results, falling back to team_name matching")
+
+    // Fallback: Get user profile and match by team_name
+    const userIdentifiers = [session.user.email]
+    try {
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("full_name, email")
+        .eq("id", session.user.id)
+        .limit(1)
+
+      if (profile && profile.length > 0) {
+        if (profile[0].full_name) userIdentifiers.push(profile[0].full_name)
+        if (profile[0].email && !userIdentifiers.includes(profile[0].email)) {
+          userIdentifiers.push(profile[0].email)
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching user profile for submissions:", error)
+    }
+
+    // Fetch all submissions and filter by user identifiers
+    const { data, error } = await supabase.from("submissions").select("*").order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Error fetching user submissions:", error)
+      return []
+    }
+
+    // Filter submissions by user identifiers
     const userSubmissions = (data || []).filter((submission) => {
-      // Check if team_name contains user email or if it's the user's submission
-      return (
-        submission.team_name?.includes(userEmail || "") ||
-        submission.team_name === (session.user.user_metadata?.full_name || userEmail)
+      return userIdentifiers.some(
+        (identifier) => submission.team_name?.includes(identifier) || submission.team_name === identifier,
       )
     })
 
-    return userSubmissions
+    // Enrich with theme data
+    const themes = await fetchThemes()
+    const themeMap = new Map(themes.map((theme) => [theme.id, theme]))
+
+    const enrichedSubmissions = userSubmissions.map((submission) => ({
+      ...submission,
+      themes: themeMap.get(submission.theme_id)
+        ? {
+            title: themeMap.get(submission.theme_id)!.title,
+            icon: themeMap.get(submission.theme_id)!.icon,
+          }
+        : undefined,
+    }))
+
+    console.log("Fetched user submissions by team_name matching:", enrichedSubmissions.length)
+    return enrichedSubmissions
   } catch (error) {
     console.error("Error fetching user submissions:", error)
     return []

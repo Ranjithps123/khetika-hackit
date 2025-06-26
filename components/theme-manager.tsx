@@ -364,17 +364,6 @@ export default function ThemeManager() {
               </div>
 
               <p className="text-gray-600 mb-4 text-sm leading-relaxed">{theme.description}</p>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Prize Pool:</span>
-                  <span className="font-medium text-green-600">₹{theme.prize_pool.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Max Teams:</span>
-                  <span className="font-medium">{theme.max_teams}</span>
-                </div>
-              </div>
             </CardContent>
           </Card>
         ))}

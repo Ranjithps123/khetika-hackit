@@ -13,7 +13,8 @@ import { toast } from "@/hooks/use-toast"
 
 interface Submission {
   id: string
-  user_id: string
+  user_id?: string
+  team_name?: string
   project_title: string
   project_description: string
   theme_id: string
@@ -30,7 +31,7 @@ interface Submission {
 }
 
 export default function SubmissionInterface() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, user } = useAuth()
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
@@ -117,6 +118,20 @@ export default function SubmissionInterface() {
     }
   }
 
+  const getParticipantName = (submission: Submission) => {
+    // Priority: user_profiles.full_name > user_profiles.email > team_name > "Unknown User"
+    if (submission.user_profiles?.full_name) {
+      return submission.user_profiles.full_name
+    }
+    if (submission.user_profiles?.email) {
+      return submission.user_profiles.email
+    }
+    if (submission.team_name) {
+      return submission.team_name
+    }
+    return "Unknown User"
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div className="space-y-4">
@@ -141,11 +156,7 @@ export default function SubmissionInterface() {
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4" />
-                    <span className="font-medium">
-                      {isAdmin
-                        ? submission.user_profiles?.full_name || submission.user_profiles?.email || "Unknown User"
-                        : "My Project"}
-                    </span>
+                    <span className="font-medium">{isAdmin ? getParticipantName(submission) : "My Project"}</span>
                     {getStatusIcon(submission.status)}
                   </div>
                   <div className="text-right">
@@ -188,6 +199,17 @@ export default function SubmissionInterface() {
                     </Badge>
                   )}
                 </div>
+
+                {/* Debug info for admins */}
+                {isAdmin && (
+                  <div className="mt-2 text-xs text-gray-500 border-t pt-2">
+                    <p>User ID: {submission.user_id || "Not set"}</p>
+                    <p>Team Name: {submission.team_name || "Not set"}</p>
+                    <p>
+                      Profile: {submission.user_profiles?.full_name || submission.user_profiles?.email || "Not linked"}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))
@@ -212,9 +234,7 @@ export default function SubmissionInterface() {
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
                   {isAdmin ? "Reviewing" : "Project Details"}:{" "}
-                  {isAdmin
-                    ? selectedSubmission.user_profiles?.full_name || "Unknown User"
-                    : selectedSubmission.project_title}
+                  {isAdmin ? getParticipantName(selectedSubmission) : selectedSubmission.project_title}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">

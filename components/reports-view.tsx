@@ -41,6 +41,7 @@ export default function ReportsView() {
   const [themeStats, setThemeStats] = useState<ThemeStat[]>([])
   const [teamPerformance, setTeamPerformance] = useState<TeamPerformance[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     loadReportData()
@@ -48,17 +49,42 @@ export default function ReportsView() {
 
   const loadReportData = async () => {
     setLoading(true)
+    setError(null)
+
     try {
-      // Fetch submissions and themes
-      const [submissions, themes] = await Promise.all([fetchSubmissions(), fetchThemes()])
+      console.log("Loading report data...")
+
+      // Fetch data with error handling
+      const [submissions, themes] = await Promise.allSettled([fetchSubmissions(), fetchThemes()])
+
+      let submissionsData: any[] = []
+      let themesData: any[] = []
+
+      // Handle submissions result
+      if (submissions.status === "fulfilled") {
+        submissionsData = submissions.value || []
+        console.log("Submissions loaded:", submissionsData.length)
+      } else {
+        console.error("Failed to fetch submissions:", submissions.reason)
+        submissionsData = []
+      }
+
+      // Handle themes result
+      if (themes.status === "fulfilled") {
+        themesData = themes.value || []
+        console.log("Themes loaded:", themesData.length)
+      } else {
+        console.error("Failed to fetch themes:", themes.reason)
+        themesData = []
+      }
 
       // Calculate stats
-      const totalSubmissions = submissions.length
-      const reviewed = submissions.filter((s) => s.status === "reviewed" || s.status === "winner").length
-      const pending = submissions.filter((s) => s.status === "submitted").length
+      const totalSubmissions = submissionsData.length
+      const reviewed = submissionsData.filter((s) => s.status === "reviewed" || s.status === "winner").length
+      const pending = submissionsData.filter((s) => s.status === "submitted").length
 
       // Calculate average score
-      const scoredSubmissions = submissions.filter((s) => s.score && s.score > 0)
+      const scoredSubmissions = submissionsData.filter((s) => s.score && s.score > 0)
       const totalScore = scoredSubmissions.reduce((sum, submission) => sum + (submission.score || 0), 0)
       const averageScore =
         scoredSubmissions.length > 0 ? Math.round((totalScore / scoredSubmissions.length) * 10) / 10 : 0
@@ -72,24 +98,33 @@ export default function ReportsView() {
 
       // Process theme stats
       const themeMap = new Map()
-      themes.forEach((t) => {
+      themesData.forEach((t) => {
         themeMap.set(t.id, {
           id: t.id,
           title: t.title,
           submissions: 0,
           totalScore: 0,
-          difficulty: t.difficulty,
+          difficulty: t.difficulty || "medium",
         })
       })
 
       // Update theme stats with submission data
-      submissions.forEach((submission) => {
+      submissionsData.forEach((submission) => {
         const themeStat = themeMap.get(submission.theme_id)
         if (themeStat) {
           themeStat.submissions++
           if (submission.score) {
             themeStat.totalScore += submission.score
           }
+        } else {
+          // Handle submissions with unknown themes
+          themeMap.set(submission.theme_id, {
+            id: submission.theme_id,
+            title: submission.themes?.title || "Unknown Theme",
+            submissions: 1,
+            totalScore: submission.score || 0,
+            difficulty: "medium",
+          })
         }
       })
 
@@ -106,54 +141,62 @@ export default function ReportsView() {
 
       setThemeStats(processedThemeStats)
 
-      // Process team performance
-      const teamMap = new Map()
-      submissions.forEach((submission) => {
-        if (!teamMap.has(submission.team_name)) {
-          teamMap.set(submission.team_name, {
-            name: submission.team_name,
+      // Process team performance (individual participants)
+      const participantMap = new Map()
+      submissionsData.forEach((submission) => {
+        // Use user_profiles data if available, otherwise fall back to team_name
+        let participantName = "Unknown Participant"
+
+        if (submission.user_profiles?.full_name) {
+          participantName = submission.user_profiles.full_name
+        } else if (submission.user_profiles?.email) {
+          participantName = submission.user_profiles.email
+        } else if (submission.team_name) {
+          participantName = submission.team_name
+        }
+
+        if (!participantMap.has(participantName)) {
+          participantMap.set(participantName, {
+            name: participantName,
             score: submission.score || 0,
             submissions: 0,
             status: submission.status || "submitted",
           })
         }
 
-        const team = teamMap.get(submission.team_name)
-        team.submissions++
-        if (submission.score && submission.score > team.score) {
-          team.score = submission.score
-          team.status = submission.status
+        const participant = participantMap.get(participantName)
+        participant.submissions++
+        if (submission.score && submission.score > participant.score) {
+          participant.score = submission.score
+          participant.status = submission.status
         }
       })
 
-      // Calculate team performance metrics
-      const processedTeamPerformance = Array.from(teamMap.values())
-        .map((t) => ({
-          name: t.name,
-          score: t.score,
-          submissions: t.submissions,
-          status: getStatusFromScore(t.score),
+      // Calculate participant performance metrics
+      const processedParticipantPerformance = Array.from(participantMap.values())
+        .map((p) => ({
+          name: p.name,
+          score: p.score,
+          submissions: p.submissions,
+          status: getStatusFromScore(p.score),
         }))
         .sort((a, b) => b.score - a.score)
-        .slice(0, 5) // Top 5 teams
+        .slice(0, 10) // Top 10 participants
 
-      setTeamPerformance(processedTeamPerformance)
+      setTeamPerformance(processedParticipantPerformance)
+
+      console.log("Report data loaded successfully")
     } catch (error) {
       console.error("Failed to load report data:", error)
+      setError("Failed to load leaderboard data. Please try again.")
       toast({
         title: "Error",
-        description: "Failed to load report data. Please try again.",
+        description: "Failed to load leaderboard data. Please try again.",
         variant: "destructive",
       })
     } finally {
       setLoading(false)
     }
-  }
-
-  const getDifficultyFromPoints = (points: number): string => {
-    if (points <= 3) return "Easy"
-    if (points <= 7) return "Medium"
-    return "Hard"
   }
 
   const getStatusFromScore = (score: number): string => {
@@ -164,12 +207,12 @@ export default function ReportsView() {
   }
 
   const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case "Easy":
+    switch (difficulty?.toLowerCase()) {
+      case "easy":
         return "bg-green-100 text-green-800"
-      case "Medium":
+      case "medium":
         return "bg-yellow-100 text-yellow-800"
-      case "Hard":
+      case "hard":
         return "bg-red-100 text-red-800"
       default:
         return "bg-gray-100 text-gray-800"
@@ -194,7 +237,23 @@ export default function ReportsView() {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-16">
-        <Loader2 className="h-12 w-12 animate-spin text-gray-400" />
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600">Loading leaderboard data...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex justify-center items-center py-16">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">{error}</p>
+          <Button onClick={loadReportData} variant="outline">
+            Try Again
+          </Button>
+        </div>
       </div>
     )
   }
@@ -253,7 +312,7 @@ export default function ReportsView() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Question Performance */}
+        {/* Theme Performance */}
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
@@ -287,11 +346,11 @@ export default function ReportsView() {
           </CardContent>
         </Card>
 
-        {/* Student Performance */}
+        {/* Participant Performance */}
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
-              <CardTitle>Top Team Performance</CardTitle>
+              <CardTitle>Top Participants</CardTitle>
               <Button variant="outline" size="sm">
                 <Download className="h-4 w-4 mr-2" />
                 Export
@@ -301,26 +360,26 @@ export default function ReportsView() {
           <CardContent>
             {teamPerformance.length > 0 ? (
               <div className="space-y-4">
-                {teamPerformance.map((team, index) => (
-                  <div key={team.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                {teamPerformance.map((participant, index) => (
+                  <div key={participant.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-sm font-medium">
                         {index + 1}
                       </div>
                       <div>
-                        <p className="font-medium">{team.name}</p>
-                        <p className="text-sm text-gray-600">{team.submissions} submissions</p>
+                        <p className="font-medium">{participant.name}</p>
+                        <p className="text-sm text-gray-600">{participant.submissions} submissions</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-lg">{team.score}/100</p>
-                      <Badge className={getStatusColor(team.status)}>{team.status}</Badge>
+                      <p className="font-bold text-lg">{participant.score}/100</p>
+                      <Badge className={getStatusColor(participant.status)}>{participant.status}</Badge>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-center text-gray-500 py-4">No team performance data available</p>
+              <p className="text-center text-gray-500 py-4">No participant data available</p>
             )}
           </CardContent>
         </Card>
