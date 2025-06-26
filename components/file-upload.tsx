@@ -5,11 +5,12 @@ import { useDropzone } from "react-dropzone"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
-import { Upload, File, FileText, X, CheckCircle, ImageIcon } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Upload, File, X, CheckCircle, GitBranch, Globe } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { fetchQuestions, createEvaluation, type Question } from "@/lib/supabase"
+import { Textarea } from "@/components/ui/textarea"
+import { fetchThemes, createSubmission, type Theme } from "@/lib/supabase"
 import { toast } from "@/hooks/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -20,31 +21,34 @@ interface UploadedFile {
   type: string
   status: "uploading" | "processing" | "completed" | "error"
   progress: number
-  extractedText?: string
   file: File
 }
 
 export function FileUpload() {
   const [files, setFiles] = useState<UploadedFile[]>([])
-  const [questions, setQuestions] = useState<Question[]>([])
-  const [selectedQuestionId, setSelectedQuestionId] = useState<string>("")
-  const [studentName, setStudentName] = useState<string>("")
+  const [themes, setThemes] = useState<Theme[]>([])
+  const [selectedThemeId, setSelectedThemeId] = useState<string>("")
+  const [projectTitle, setProjectTitle] = useState<string>("")
+  const [projectDescription, setProjectDescription] = useState<string>("")
+  const [applicationUrl, setApplicationUrl] = useState<string>("")
+  const [gitlabUrl, setGitlabUrl] = useState<string>("")
   const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    async function loadQuestions() {
+    async function loadThemes() {
       setLoading(true)
       try {
-        const questions = await fetchQuestions()
-        setQuestions(questions)
-        if (questions.length > 0) {
-          setSelectedQuestionId(questions[0].id)
+        const themes = await fetchThemes()
+        setThemes(themes)
+        if (themes.length > 0) {
+          setSelectedThemeId(themes[0].id)
         }
       } catch (error) {
-        console.error("Failed to load questions:", error)
+        console.error("Failed to load themes:", error)
         toast({
           title: "Error",
-          description: "Failed to load questions. Please try again.",
+          description: "Failed to load themes. Please try again.",
           variant: "destructive",
         })
       } finally {
@@ -52,207 +56,44 @@ export function FileUpload() {
       }
     }
 
-    loadQuestions()
+    loadThemes()
   }, [])
 
-  // Function to sanitize text for database storage
-  const sanitizeText = (text: string): string => {
-    if (!text) return ""
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    const newFiles = acceptedFiles.map((file) => ({
+      id: Math.random().toString(36).substr(2, 9),
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      status: "uploading" as const,
+      progress: 0,
+      file: file,
+    }))
 
-    try {
-      // Remove or replace problematic Unicode escape sequences
-      let sanitized = text
-        // Remove null bytes and other control characters
-        .replace(/\0/g, "")
-        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
-        // Replace problematic escape sequences
-        .replace(/\\u[0-9a-fA-F]{4}/g, " ")
-        .replace(/\\x[0-9a-fA-F]{2}/g, " ")
-        .replace(/\\[0-7]{1,3}/g, " ")
-        // Clean up PDF-specific artifacts
-        .replace(/\\n/g, " ")
-        .replace(/\\r/g, " ")
-        .replace(/\\t/g, " ")
-        .replace(/\\\\/g, "\\")
-        // Remove excessive whitespace
-        .replace(/\s+/g, " ")
-        .trim()
+    setFiles((prev) => [...prev, ...newFiles])
 
-      // Ensure the text is valid UTF-8
-      sanitized = sanitized.normalize("NFKC")
-
-      // Limit length to prevent database issues
-      if (sanitized.length > 10000) {
-        sanitized = sanitized.substring(0, 10000) + "... [truncated]"
-      }
-
-      return sanitized
-    } catch (error) {
-      console.error("Error sanitizing text:", error)
-      return "Error processing extracted text"
-    }
-  }
-
-  const extractTextFromFile = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const fileType = file.type
-
-      if (fileType === "text/plain") {
-        // Handle text files
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          const text = e.target?.result as string
-          const sanitizedText = sanitizeText(text || "")
-          resolve(sanitizedText)
-        }
-        reader.onerror = () => reject(new Error("Failed to read text file"))
-        reader.readAsText(file)
-      } else if (fileType === "application/pdf") {
-        // Handle PDF files using enhanced basic extraction
-        const reader = new FileReader()
-        reader.onload = async (e) => {
-          try {
-            const arrayBuffer = e.target?.result as ArrayBuffer
-            const text = await extractTextFromPDF(arrayBuffer)
-            const sanitizedText = sanitizeText(text)
-            resolve(sanitizedText)
-          } catch (error) {
-            console.error("PDF extraction error:", error)
-            reject(new Error("Failed to extract text from PDF"))
-          }
-        }
-        reader.onerror = () => reject(new Error("Failed to read PDF file"))
-        reader.readAsArrayBuffer(file)
-      } else if (fileType.startsWith("image/")) {
-        // Handle image files - OCR simulation
-        try {
-          extractTextFromImage(file)
-            .then((text) => {
-              const sanitizedText = sanitizeText(text)
-              resolve(sanitizedText)
-            })
-            .catch((error) => {
-              reject(new Error("Failed to extract text from image"))
-            })
-        } catch (error) {
-          reject(new Error("Failed to extract text from image"))
-        }
-      } else {
-        reject(new Error("Unsupported file type"))
-      }
+    // Process each file
+    newFiles.forEach((fileData) => {
+      processFile(fileData.id)
     })
-  }
+  }, [])
 
-  const extractTextFromPDF = async (arrayBuffer: ArrayBuffer): Promise<string> => {
-    // For demonstration purposes, return the expected photosynthesis text
-    // This ensures the system works while we develop a more robust PDF extraction
-    return `Photosynthesis is the process by which green plants, algae, and some bacteria use sunlight to
-produce food. During this process, they convert carbon dioxide from the air and water from the soil
-into glucose (a type of sugar) and oxygen, using sunlight as the energy source.
-The basic word equation is:
-Carbon dioxide + Water + Sunlight → Glucose + Oxygen
-This process occurs mainly in the chloroplasts of plant cells, which contain the green pigment
-chlorophyll that captures sunlight. Photosynthesis is essential because it provides the oxygen we
-breathe and is the foundation of the food chain.`
-  }
-
-  const extractTextFromImage = async (file: File): Promise<string> => {
-    // Simulate OCR processing
-    return new Promise((resolve) => {
-      // Create an image element to load the file
-      const img = new Image()
-      const canvas = document.createElement("canvas")
-      const ctx = canvas.getContext("2d")
-
-      img.onload = () => {
-        canvas.width = img.width
-        canvas.height = img.height
-        ctx?.drawImage(img, 0, 0)
-
-        // Simulate OCR processing time
-        setTimeout(() => {
-          const simulatedOCRText = `This is text extracted from the image "${file.name}". In a real implementation, this would contain the actual text recognized from the image using OCR technology like Tesseract.js or cloud OCR services.`
-          resolve(simulatedOCRText)
-        }, 2000)
-      }
-
-      img.onerror = () => {
-        resolve("Error: Could not process image for text extraction")
-      }
-
-      // Load the image
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        img.src = e.target?.result as string
-      }
-      reader.readAsDataURL(file)
-    })
-  }
-
-  const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      if (!selectedQuestionId) {
-        toast({
-          title: "No question selected",
-          description: "Please select a question before uploading files.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const newFiles = acceptedFiles.map((file) => ({
-        id: Math.random().toString(36).substr(2, 9),
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        status: "uploading" as const,
-        progress: 0,
-        file: file,
-      }))
-
-      setFiles((prev) => [...prev, ...newFiles])
-
-      // Process each file
-      newFiles.forEach((fileData) => {
-        processFile(fileData.id, fileData.file)
-      })
-    },
-    [studentName, selectedQuestionId],
-  )
-
-  const processFile = async (fileId: string, file: File) => {
+  const processFile = async (fileId: string) => {
     const updateProgress = (progress: number, status: UploadedFile["status"]) => {
       setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, progress, status } : f)))
     }
 
     try {
-      // Simulate upload progress
       updateProgress(25, "uploading")
       await new Promise((resolve) => setTimeout(resolve, 500))
-
-      updateProgress(50, "processing")
-
-      // Extract text from the actual file
-      const extractedText = await extractTextFromFile(file)
 
       updateProgress(75, "processing")
       await new Promise((resolve) => setTimeout(resolve, 500))
 
-      // Update with extracted text
-      setFiles((prev) =>
-        prev.map((f) => (f.id === fileId ? { ...f, extractedText, progress: 100, status: "completed" } : f)),
-      )
-
-      // Trigger evaluation after text extraction
-      await evaluateAnswer(fileId, extractedText)
+      updateProgress(100, "completed")
     } catch (error) {
       console.error("Error processing file:", error)
       updateProgress(0, "error")
-      toast({
-        title: "Processing Error",
-        description: `Failed to process ${file.name}: ${error.message}`,
-        variant: "destructive",
-      })
     }
   }
 
@@ -263,18 +104,79 @@ breathe and is the foundation of the food chain.`
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      "image/*": [".png", ".jpg", ".jpeg"],
       "application/pdf": [".pdf"],
-      "text/plain": [".txt"],
     },
-    multiple: true,
+    multiple: false,
+    maxFiles: 1,
   })
 
-  const getFileIcon = (type: string) => {
-    if (type.startsWith("image/")) return <ImageIcon className="h-4 w-4" />
-    if (type === "application/pdf") return <File className="h-4 w-4" />
-    if (type === "text/plain") return <FileText className="h-4 w-4" />
-    return <File className="h-4 w-4" />
+  const handleSubmit = async () => {
+    // Validation
+    if (!projectTitle.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter your project title.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!selectedThemeId) {
+      toast({
+        title: "Missing Information",
+        description: "Please select a theme.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!applicationUrl.trim() && !gitlabUrl.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please provide either an application URL or GitLab repository URL.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      const submission = {
+        project_title: projectTitle.trim(),
+        project_description: projectDescription.trim(),
+        theme_id: selectedThemeId,
+        application_url: applicationUrl.trim() || null,
+        gitlab_url: gitlabUrl.trim() || null,
+        pdf_file_name: files[0]?.name || null,
+        status: "submitted" as const,
+      }
+
+      const result = await createSubmission(submission)
+
+      if (result) {
+        toast({
+          title: "Submission Successful!",
+          description: "Your hackathon project has been submitted successfully.",
+        })
+
+        // Reset form
+        setProjectTitle("")
+        setProjectDescription("")
+        setApplicationUrl("")
+        setGitlabUrl("")
+        setFiles([])
+      }
+    } catch (error) {
+      console.error("Submission failed:", error)
+      toast({
+        title: "Submission Failed",
+        description: "There was an error submitting your project. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const getStatusColor = (status: UploadedFile["status"]) => {
@@ -292,224 +194,178 @@ breathe and is the foundation of the food chain.`
     }
   }
 
-  const evaluateAnswer = async (fileId: string, extractedText: string) => {
-    try {
-      if (!selectedQuestionId) {
-        toast({
-          title: "Error",
-          description: "No question selected for evaluation",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const question = questions.find((q) => q.id === selectedQuestionId)
-      if (!question) {
-        toast({
-          title: "Error",
-          description: "Selected question not found",
-          variant: "destructive",
-        })
-        return
-      }
-
-      // Perform evaluation logic
-      const evaluationResult = evaluateExtractedText(extractedText, question)
-
-      // Sanitize all text fields before saving to database
-      const sanitizedEvaluation = {
-        file_id: fileId,
-        student_name: sanitizeText(studentName || "Anonymous Student"),
-        question_id: selectedQuestionId,
-        extracted_answer: sanitizeText(extractedText),
-        score: evaluationResult.score,
-        max_points: question.points,
-        confidence: evaluationResult.confidence,
-        feedback: sanitizeText(evaluationResult.feedback),
-        rubric_match: evaluationResult.rubricMatch.map((keyword) => sanitizeText(keyword)),
-        status: "pending" as const,
-      }
-
-      // Save to Supabase
-      const result = await createEvaluation(sanitizedEvaluation)
-
-      if (result) {
-        toast({
-          title: "Evaluation Complete",
-          description: `Score: ${evaluationResult.score}/${question.points}`,
-        })
-      }
-    } catch (error) {
-      console.error("Evaluation failed:", error)
-      toast({
-        title: "Evaluation Failed",
-        description: "There was an error evaluating the answer",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const evaluateExtractedText = (text: string, question: Question) => {
-    const answerLower = text.toLowerCase()
-    const matchedKeywords: string[] = []
-
-    // Check for keyword matches
-    question.keywords.forEach((keyword) => {
-      if (answerLower.includes(keyword.toLowerCase())) {
-        matchedKeywords.push(keyword)
-      }
-    })
-
-    // Calculate score based on keyword matches and question type
-    let score = 0
-    let confidence = 0
-    let feedback = ""
-
-    switch (question.type) {
-      case "short-answer":
-        const keywordRatio = matchedKeywords.length / question.keywords.length
-        score = Math.floor(question.points * keywordRatio)
-        confidence = matchedKeywords.length > 0 ? 85 + Math.random() * 15 : 60 + Math.random() * 25
-
-        if (score >= question.points * 0.9) {
-          feedback = "Excellent! Your answer is correct and complete."
-        } else if (score >= question.points * 0.7) {
-          feedback = `Good work! You got most of it right. Key concepts identified: ${matchedKeywords.join(", ")}`
-        } else if (score >= question.points * 0.5) {
-          feedback = `Partial credit. Your answer shows some understanding but could be more complete.`
-        } else {
-          feedback = "Your answer needs improvement. Please review the question and try to include the key concepts."
-        }
-        break
-
-      case "essay":
-        const essayKeywordRatio = matchedKeywords.length / question.keywords.length
-        const lengthBonus = text.length > 50 ? 0.1 : 0 // Bonus for detailed answers
-        score = Math.floor(question.points * (essayKeywordRatio + lengthBonus))
-        confidence = Math.min(95, 70 + matchedKeywords.length * 5)
-
-        const missedKeywords = question.keywords.filter((k) => !matchedKeywords.includes(k))
-
-        if (score >= question.points * 0.9) {
-          feedback = "Excellent essay! You covered all the key concepts comprehensively."
-        } else if (score >= question.points * 0.7) {
-          feedback = `Good essay with solid understanding. You mentioned: ${matchedKeywords.join(", ")}.`
-        } else if (score >= question.points * 0.5) {
-          feedback = `Your essay shows basic understanding but could be expanded.`
-        } else {
-          feedback = "Your essay needs significant improvement."
-        }
-
-        if (missedKeywords.length > 0) {
-          feedback += ` Consider including: ${missedKeywords.join(", ")}.`
-        }
-        break
-
-      case "multiple-choice":
-        score = Math.random() > 0.5 ? question.points : 0
-        confidence = 95
-        feedback = score === question.points ? "Correct answer!" : "Incorrect answer."
-        break
-    }
-
-    return {
-      score: Math.min(score, question.points),
-      confidence: Math.round(confidence),
-      feedback,
-      rubricMatch: matchedKeywords,
-    }
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div>
-          <Label htmlFor="student-name">Student Name</Label>
-          <Input
-            id="student-name"
-            value={studentName}
-            onChange={(e) => setStudentName(e.target.value)}
-            placeholder="Enter student name"
-          />
-        </div>
-        <div>
-          <Label htmlFor="question-select">Select Question</Label>
-          <Select value={selectedQuestionId} onValueChange={setSelectedQuestionId} disabled={loading}>
-            <SelectTrigger>
-              <SelectValue placeholder={loading ? "Loading questions..." : "Choose a question"} />
-            </SelectTrigger>
-            <SelectContent>
-              {questions.map((question) => (
-                <SelectItem key={question.id} value={question.id}>
-                  {question.title} ({question.points} pts)
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div
-        {...getRootProps()}
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-          isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-gray-400"
-        }`}
-      >
-        <input {...getInputProps()} />
-        <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-        <p className="text-lg font-medium text-gray-900 mb-2">
-          {isDragActive ? "Drop files here" : "Upload answer sheets"}
-        </p>
-        <p className="text-sm text-gray-500 mb-4">Drag and drop files here, or click to select files</p>
-        <div className="flex justify-center gap-2 mb-4">
-          <Badge variant="secondary">PDF</Badge>
-          <Badge variant="secondary">Images</Badge>
-          <Badge variant="secondary">Text</Badge>
-        </div>
-        <Button variant="outline">Choose Files</Button>
-      </div>
+    <div className="max-w-4xl mx-auto space-y-8">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5" />
+            Submit Your Hackathon Project
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Project Information */}
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="project-title">Project Title *</Label>
+              <Input
+                id="project-title"
+                value={projectTitle}
+                onChange={(e) => setProjectTitle(e.target.value)}
+                placeholder="Enter your project title"
+                required
+              />
+            </div>
 
-      {files.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-lg font-medium">Uploaded Files</h3>
-          {files.map((file) => (
-            <Card key={file.id}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 flex-1">
-                    {getFileIcon(file.type)}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{file.name}</p>
-                      <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className={`${getStatusColor(file.status)} text-white`}>
-                        {file.status}
-                      </Badge>
-                      {file.status === "completed" && <CheckCircle className="h-4 w-4 text-green-500" />}
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => removeFile(file.id)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+            <div>
+              <Label htmlFor="project-description">Project Description</Label>
+              <Textarea
+                id="project-description"
+                value={projectDescription}
+                onChange={(e) => setProjectDescription(e.target.value)}
+                placeholder="Briefly describe your project, the problem it solves, and your approach..."
+                rows={4}
+              />
+            </div>
 
-                {file.status !== "completed" && (
-                  <div className="mt-3">
-                    <Progress value={file.progress} className="h-2" />
-                  </div>
-                )}
+            <div>
+              <Label htmlFor="theme-select">Select Theme *</Label>
+              <Select value={selectedThemeId} onValueChange={setSelectedThemeId} disabled={loading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={loading ? "Loading themes..." : "Choose a theme"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {themes.map((theme) => (
+                    <SelectItem key={theme.id} value={theme.id}>
+                      {theme.icon} {theme.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-                {file.extractedText && (
-                  <div className="mt-3 p-3 bg-gray-50 rounded-md">
-                    <p className="text-xs font-medium text-gray-700 mb-1">Extracted Text:</p>
-                    <p className="text-sm text-gray-600 max-h-32 overflow-y-auto">{file.extractedText}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+          {/* URLs */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="application-url" className="flex items-center gap-2">
+                <Globe className="h-4 w-4" />
+                Application URL
+              </Label>
+              <Input
+                id="application-url"
+                value={applicationUrl}
+                onChange={(e) => setApplicationUrl(e.target.value)}
+                placeholder="https://your-app.vercel.app"
+                type="url"
+              />
+            </div>
+            <div>
+              <Label htmlFor="gitlab-url" className="flex items-center gap-2">
+                <GitBranch className="h-4 w-4" />
+                GitLab Repository URL
+              </Label>
+              <Input
+                id="gitlab-url"
+                value={gitlabUrl}
+                onChange={(e) => setGitlabUrl(e.target.value)}
+                placeholder="https://gitlab.com/username/project"
+                type="url"
+              />
+            </div>
+          </div>
+
+          {/* File Upload */}
+          <div>
+            <Label className="block mb-2">Project Presentation (PDF)</Label>
+            <div
+              {...getRootProps()}
+              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-gray-400"
+              }`}
+            >
+              <input {...getInputProps()} />
+              <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+              <p className="text-sm font-medium text-gray-900 mb-1">
+                {isDragActive ? "Drop your PDF here" : "Upload project presentation"}
+              </p>
+              <p className="text-xs text-gray-500 mb-2">Drag and drop your PDF file here, or click to select</p>
+              <Badge variant="secondary">PDF Only</Badge>
+            </div>
+
+            {files.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {files.map((file) => (
+                  <Card key={file.id}>
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1">
+                          <File className="h-4 w-4" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{file.name}</p>
+                            <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className={`${getStatusColor(file.status)} text-white`}>
+                              {file.status}
+                            </Badge>
+                            {file.status === "completed" && <CheckCircle className="h-4 w-4 text-green-500" />}
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => removeFile(file.id)}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      {file.status !== "completed" && (
+                        <div className="mt-2">
+                          <Progress value={file.progress} className="h-1" />
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Submit Button */}
+          <div className="flex justify-end pt-4">
+            <Button onClick={handleSubmit} disabled={submitting} size="lg" className="min-w-32">
+              {submitting ? "Submitting..." : "Submit Project"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Guidelines */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Submission Guidelines</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <h4 className="font-medium mb-2">Required:</h4>
+              <ul className="space-y-1 text-gray-600">
+                <li>• Project title and description</li>
+                <li>• Select one theme from the available options</li>
+                <li>• Either application URL or GitLab repository</li>
+                <li>• PDF presentation (optional but recommended)</li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-medium mb-2">Tips:</h4>
+              <ul className="space-y-1 text-gray-600">
+                <li>• Include screenshots in your PDF</li>
+                <li>• Explain your technical approach</li>
+                <li>• Highlight innovation and impact</li>
+                <li>• Test your URLs before submitting</li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { BarChart3, Users, FileText, TrendingUp, Download, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { fetchEvaluations, fetchQuestions } from "@/lib/supabase"
+import { fetchSubmissions, fetchThemes } from "@/lib/supabase"
 import { toast } from "@/hooks/use-toast"
 
 interface ReportStats {
@@ -16,7 +16,7 @@ interface ReportStats {
   averageScore: number
 }
 
-interface QuestionStat {
+interface ThemeStat {
   id: string
   title: string
   submissions: number
@@ -24,7 +24,7 @@ interface QuestionStat {
   difficulty: string
 }
 
-interface StudentPerformance {
+interface TeamPerformance {
   name: string
   score: number
   submissions: number
@@ -38,8 +38,8 @@ export default function ReportsView() {
     pending: 0,
     averageScore: 0,
   })
-  const [questionStats, setQuestionStats] = useState<QuestionStat[]>([])
-  const [studentPerformance, setStudentPerformance] = useState<StudentPerformance[]>([])
+  const [themeStats, setThemeStats] = useState<ThemeStat[]>([])
+  const [teamPerformance, setTeamPerformance] = useState<TeamPerformance[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -49,96 +49,95 @@ export default function ReportsView() {
   const loadReportData = async () => {
     setLoading(true)
     try {
-      // Fetch evaluations and questions
-      const [evaluations, questions] = await Promise.all([fetchEvaluations(), fetchQuestions()])
+      // Fetch submissions and themes
+      const [submissions, themes] = await Promise.all([fetchSubmissions(), fetchThemes()])
 
       // Calculate stats
-      const totalSubmissions = evaluations.length
-      const evaluated = evaluations.filter((e) => e.status === "approved").length
-      const pending = totalSubmissions - evaluated
+      const totalSubmissions = submissions.length
+      const reviewed = submissions.filter((s) => s.status === "reviewed" || s.status === "winner").length
+      const pending = submissions.filter((s) => s.status === "submitted").length
 
       // Calculate average score
-      const totalScore = evaluations.reduce(
-        (sum, evaluation) => sum + (evaluation.score / evaluation.max_points) * 100,
-        0,
-      )
-      const averageScore = totalSubmissions > 0 ? Math.round((totalScore / totalSubmissions) * 10) / 10 : 0
+      const scoredSubmissions = submissions.filter((s) => s.score && s.score > 0)
+      const totalScore = scoredSubmissions.reduce((sum, submission) => sum + (submission.score || 0), 0)
+      const averageScore =
+        scoredSubmissions.length > 0 ? Math.round((totalScore / scoredSubmissions.length) * 10) / 10 : 0
 
       setStats({
         totalSubmissions,
-        evaluated,
+        evaluated: reviewed,
         pending,
         averageScore,
       })
 
-      // Process question stats
-      const questionMap = new Map()
-      questions.forEach((q) => {
-        questionMap.set(q.id, {
-          id: q.id,
-          title: q.title,
+      // Process theme stats
+      const themeMap = new Map()
+      themes.forEach((t) => {
+        themeMap.set(t.id, {
+          id: t.id,
+          title: t.title,
           submissions: 0,
           totalScore: 0,
-          maxPoints: q.points,
-          difficulty: getDifficultyFromPoints(q.points),
+          difficulty: t.difficulty,
         })
       })
 
-      // Update question stats with evaluation data
-      evaluations.forEach((evaluationItem) => {
-        const questionStat = questionMap.get(evaluationItem.question_id)
-        if (questionStat) {
-          questionStat.submissions++
-          questionStat.totalScore += evaluationItem.score
+      // Update theme stats with submission data
+      submissions.forEach((submission) => {
+        const themeStat = themeMap.get(submission.theme_id)
+        if (themeStat) {
+          themeStat.submissions++
+          if (submission.score) {
+            themeStat.totalScore += submission.score
+          }
         }
       })
 
-      // Calculate average scores for questions
-      const processedQuestionStats = Array.from(questionMap.values())
-        .map((q) => ({
-          id: q.id,
-          title: q.title,
-          submissions: q.submissions,
-          avgScore: q.submissions > 0 ? Math.round((q.totalScore / (q.submissions * q.maxPoints)) * 100) : 0,
-          difficulty: q.difficulty,
+      // Calculate average scores for themes
+      const processedThemeStats = Array.from(themeMap.values())
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          submissions: t.submissions,
+          avgScore: t.submissions > 0 ? Math.round(t.totalScore / t.submissions) : 0,
+          difficulty: t.difficulty,
         }))
         .sort((a, b) => b.submissions - a.submissions)
 
-      setQuestionStats(processedQuestionStats)
+      setThemeStats(processedThemeStats)
 
-      // Process student performance
-      const studentMap = new Map()
-      evaluations.forEach((evaluationItem) => {
-        if (!studentMap.has(evaluationItem.student_name)) {
-          studentMap.set(evaluationItem.student_name, {
-            name: evaluationItem.student_name,
-            totalScore: 0,
-            totalMaxPoints: 0,
+      // Process team performance
+      const teamMap = new Map()
+      submissions.forEach((submission) => {
+        if (!teamMap.has(submission.team_name)) {
+          teamMap.set(submission.team_name, {
+            name: submission.team_name,
+            score: submission.score || 0,
             submissions: 0,
+            status: submission.status || "submitted",
           })
         }
 
-        const student = studentMap.get(evaluationItem.student_name)
-        student.totalScore += evaluationItem.score
-        student.totalMaxPoints += evaluationItem.max_points
-        student.submissions++
+        const team = teamMap.get(submission.team_name)
+        team.submissions++
+        if (submission.score && submission.score > team.score) {
+          team.score = submission.score
+          team.status = submission.status
+        }
       })
 
-      // Calculate student performance metrics
-      const processedStudentPerformance = Array.from(studentMap.values())
-        .map((s) => {
-          const scorePercentage = s.totalMaxPoints > 0 ? Math.round((s.totalScore / s.totalMaxPoints) * 100) : 0
-          return {
-            name: s.name,
-            score: scorePercentage,
-            submissions: s.submissions,
-            status: getStatusFromScore(scorePercentage),
-          }
-        })
+      // Calculate team performance metrics
+      const processedTeamPerformance = Array.from(teamMap.values())
+        .map((t) => ({
+          name: t.name,
+          score: t.score,
+          submissions: t.submissions,
+          status: getStatusFromScore(t.score),
+        }))
         .sort((a, b) => b.score - a.score)
-        .slice(0, 5) // Top 5 students
+        .slice(0, 5) // Top 5 teams
 
-      setStudentPerformance(processedStudentPerformance)
+      setTeamPerformance(processedTeamPerformance)
     } catch (error) {
       console.error("Failed to load report data:", error)
       toast({
@@ -222,7 +221,7 @@ export default function ReportsView() {
               <Users className="h-5 w-5 text-green-500" />
               <div>
                 <p className="text-2xl font-bold">{stats.evaluated}</p>
-                <p className="text-sm text-gray-600">Evaluated</p>
+                <p className="text-sm text-gray-600">Reviewed</p>
               </div>
             </div>
           </CardContent>
@@ -258,7 +257,7 @@ export default function ReportsView() {
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
-              <CardTitle>Question Performance</CardTitle>
+              <CardTitle>Theme Performance</CardTitle>
               <Button variant="outline" size="sm">
                 <Download className="h-4 w-4 mr-2" />
                 Export
@@ -266,24 +265,24 @@ export default function ReportsView() {
             </div>
           </CardHeader>
           <CardContent>
-            {questionStats.length > 0 ? (
+            {themeStats.length > 0 ? (
               <div className="space-y-4">
-                {questionStats.map((question) => (
-                  <div key={question.id} className="space-y-2">
+                {themeStats.map((theme) => (
+                  <div key={theme.id} className="space-y-2">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{question.title}</span>
-                        <Badge className={getDifficultyColor(question.difficulty)}>{question.difficulty}</Badge>
+                        <span className="font-medium">{theme.title}</span>
+                        <Badge className={getDifficultyColor(theme.difficulty)}>{theme.difficulty}</Badge>
                       </div>
-                      <span className="text-sm text-gray-600">{question.avgScore}% avg</span>
+                      <span className="text-sm text-gray-600">{theme.avgScore}% avg</span>
                     </div>
-                    <Progress value={question.avgScore} className="h-2" />
-                    <p className="text-xs text-gray-500">{question.submissions} submissions</p>
+                    <Progress value={theme.avgScore} className="h-2" />
+                    <p className="text-xs text-gray-500">{theme.submissions} submissions</p>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-center text-gray-500 py-4">No question data available</p>
+              <p className="text-center text-gray-500 py-4">No theme data available</p>
             )}
           </CardContent>
         </Card>
@@ -292,7 +291,7 @@ export default function ReportsView() {
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
-              <CardTitle>Top Student Performance</CardTitle>
+              <CardTitle>Top Team Performance</CardTitle>
               <Button variant="outline" size="sm">
                 <Download className="h-4 w-4 mr-2" />
                 Export
@@ -300,28 +299,28 @@ export default function ReportsView() {
             </div>
           </CardHeader>
           <CardContent>
-            {studentPerformance.length > 0 ? (
+            {teamPerformance.length > 0 ? (
               <div className="space-y-4">
-                {studentPerformance.map((student, index) => (
-                  <div key={student.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                {teamPerformance.map((team, index) => (
+                  <div key={team.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-sm font-medium">
                         {index + 1}
                       </div>
                       <div>
-                        <p className="font-medium">{student.name}</p>
-                        <p className="text-sm text-gray-600">{student.submissions} submissions</p>
+                        <p className="font-medium">{team.name}</p>
+                        <p className="text-sm text-gray-600">{team.submissions} submissions</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-lg">{student.score}%</p>
-                      <Badge className={getStatusColor(student.status)}>{student.status}</Badge>
+                      <p className="font-bold text-lg">{team.score}/100</p>
+                      <Badge className={getStatusColor(team.status)}>{team.status}</Badge>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-center text-gray-500 py-4">No student performance data available</p>
+              <p className="text-center text-gray-500 py-4">No team performance data available</p>
             )}
           </CardContent>
         </Card>

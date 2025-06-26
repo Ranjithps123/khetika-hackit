@@ -1,48 +1,41 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileUpload } from "@/components/file-upload"
 import ThemeManager from "@/components/theme-manager"
 import SubmissionInterface from "@/components/submission-interface"
 import ReportsView from "@/components/reports-view"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { Navbar } from "@/components/navbar"
 
-export default function Home() {
+export default function AdminPage() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute adminOnly>
       <div className="min-h-screen bg-gray-50">
         <Navbar />
         <main className="container mx-auto py-10">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-              Submit Your Innovation
+              Admin Dashboard
             </h1>
             <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-              Build innovative solutions for India's agricultural supply chain. Choose a theme, develop your solution,
-              and submit your project to compete for exciting prizes!
+              Manage hackathon themes, review submissions, and track participant progress.
             </p>
           </div>
 
-          <Tabs defaultValue="submit" className="w-full">
-            <TabsList className="grid grid-cols-4 mb-8">
-              <TabsTrigger value="submit">Submit Project</TabsTrigger>
-              <TabsTrigger value="themes">Themes</TabsTrigger>
-              <TabsTrigger value="submissions">My Submissions</TabsTrigger>
-              <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+          <Tabs defaultValue="submissions" className="w-full">
+            <TabsList className="grid grid-cols-3 mb-8">
+              <TabsTrigger value="submissions">Review Submissions</TabsTrigger>
+              <TabsTrigger value="themes">Manage Themes</TabsTrigger>
+              <TabsTrigger value="reports">Analytics</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="submit">
-              <FileUpload />
+            <TabsContent value="submissions">
+              <SubmissionInterface />
             </TabsContent>
 
             <TabsContent value="themes">
               <ThemeManager />
             </TabsContent>
 
-            <TabsContent value="submissions">
-              <SubmissionInterface />
-            </TabsContent>
-
-            <TabsContent value="leaderboard">
+            <TabsContent value="reports">
               <ReportsView />
             </TabsContent>
           </Tabs>
