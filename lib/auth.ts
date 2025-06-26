@@ -53,101 +53,48 @@ export async function signOut() {
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   try {
-    // Add timeout to prevent hanging
-    const profilePromise = supabase.from("user_profiles").select("*").eq("id", userId)
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Profile fetch timeout")), 5000),
-    )
-
-    const { data, error } = (await Promise.race([profilePromise, timeoutPromise])) as any
+    // Simple profile fetch without timeout - let Supabase handle its own timeouts
+    const { data, error } = await supabase.from("user_profiles").select("*").eq("id", userId).maybeSingle()
 
     if (error) {
       console.error("Error fetching user profile:", error)
-
-      // If the table doesn't exist, create a default profile
-      if (error.code === "42P01") {
-        console.log("User profiles table doesn't exist, creating default profile...")
-        return await createDefaultUserProfile(userId)
-      }
-
-      return await createDefaultUserProfile(userId)
+      return createDefaultUserProfile(userId)
     }
 
-    // Handle the response
-    if (!data || data.length === 0) {
+    // If no profile found, create default
+    if (!data) {
       console.log("No user profile found, creating default profile...")
-      return await createDefaultUserProfile(userId)
+      return createDefaultUserProfile(userId)
     }
 
-    // If multiple profiles exist, take the first one
-    if (data.length > 1) {
-      console.warn(`Multiple profiles found for user ${userId}, using the first one`)
-      return data[0]
-    }
-
-    return data[0]
+    return data
   } catch (error) {
     console.error("Error in getUserProfile:", error)
-    return await createDefaultUserProfile(userId)
+    return createDefaultUserProfile(userId)
   }
 }
 
-async function createDefaultUserProfile(userId: string): Promise<UserProfile | null> {
-  try {
-    // Get user info from auth with timeout
-    const userPromise = supabase.auth.getUser()
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("User fetch timeout")), 3000))
-
-    const {
-      data: { user },
-      error: userError,
-    } = (await Promise.race([userPromise, timeoutPromise])) as any
-
-    const defaultProfile: Omit<UserProfile, "created_at"> = {
-      id: userId,
-      email: user?.email || "",
-      full_name: user?.user_metadata?.full_name || "",
-      user_type: "user",
-    }
-
-    if (userError || !user) {
-      console.error("Error getting user for profile creation:", userError)
-      // Return the basic default profile without trying to save it
-      return defaultProfile
-    }
-
-    // Try to insert the profile with upsert to handle conflicts
-    const { data, error } = await supabase.from("user_profiles").upsert([defaultProfile], { onConflict: "id" }).select()
-
-    if (error) {
-      console.error("Error creating default user profile:", error)
-      // Return the default profile even if we can't save it
-      return defaultProfile
-    }
-
-    return data?.[0] || defaultProfile
-  } catch (error) {
-    console.error("Error creating default user profile:", error)
-    // Return a basic profile as fallback
-    return {
-      id: userId,
-      email: "",
-      full_name: "",
-      user_type: "user",
-    }
+function createDefaultUserProfile(userId: string): UserProfile {
+  // Return a simple default profile without trying to fetch user data or save to DB
+  // This prevents cascading failures and timeouts
+  return {
+    id: userId,
+    email: "",
+    full_name: "",
+    user_type: "user",
   }
 }
 
 export async function updateUserProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile | null> {
   try {
-    const { data, error } = await supabase.from("user_profiles").update(updates).eq("id", userId).select()
+    const { data, error } = await supabase.from("user_profiles").update(updates).eq("id", userId).select().single()
 
     if (error) {
       console.error("Error updating user profile:", error)
       return null
     }
 
-    return data?.[0] || null
+    return data
   } catch (error) {
     console.error("Error updating user profile:", error)
     return null

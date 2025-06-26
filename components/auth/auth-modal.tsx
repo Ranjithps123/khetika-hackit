@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,12 +19,6 @@ interface AuthModalProps {
 export function AuthModal({ onSuccess }: AuthModalProps) {
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState("signin")
-  const [mounted, setMounted] = useState(false)
-
-  // Ensure component is mounted before showing
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Sign In Form
   const [signInEmail, setSignInEmail] = useState("")
@@ -104,17 +98,6 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
     } finally {
       setLoading(false)
     }
-  }
-
-  if (!mounted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    )
   }
 
   return (
