@@ -53,8 +53,13 @@ export async function signOut() {
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   try {
-    // First, try to fetch the profile without .single() to handle multiple/no rows
-    const { data, error } = await supabase.from("user_profiles").select("*").eq("id", userId)
+    // Add timeout to prevent hanging
+    const profilePromise = supabase.from("user_profiles").select("*").eq("id", userId)
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Profile fetch timeout")), 5000),
+    )
+
+    const { data, error } = (await Promise.race([profilePromise, timeoutPromise])) as any
 
     if (error) {
       console.error("Error fetching user profile:", error)
@@ -74,10 +79,9 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
       return await createDefaultUserProfile(userId)
     }
 
-    // If multiple profiles exist, take the first one and clean up
+    // If multiple profiles exist, take the first one
     if (data.length > 1) {
       console.warn(`Multiple profiles found for user ${userId}, using the first one`)
-      // Optionally, you could clean up duplicate profiles here
       return data[0]
     }
 
@@ -90,28 +94,26 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
 
 async function createDefaultUserProfile(userId: string): Promise<UserProfile | null> {
   try {
-    // Get user info from auth
+    // Get user info from auth with timeout
+    const userPromise = supabase.auth.getUser()
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("User fetch timeout")), 3000))
+
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      console.error("Error getting user for profile creation:", userError)
-      // Return a basic default profile
-      return {
-        id: userId,
-        email: "",
-        full_name: "",
-        user_type: "user",
-      }
-    }
+    } = (await Promise.race([userPromise, timeoutPromise])) as any
 
     const defaultProfile: Omit<UserProfile, "created_at"> = {
       id: userId,
-      email: user.email || "",
-      full_name: user.user_metadata?.full_name || "",
+      email: user?.email || "",
+      full_name: user?.user_metadata?.full_name || "",
       user_type: "user",
+    }
+
+    if (userError || !user) {
+      console.error("Error getting user for profile creation:", userError)
+      // Return the basic default profile without trying to save it
+      return defaultProfile
     }
 
     // Try to insert the profile with upsert to handle conflicts

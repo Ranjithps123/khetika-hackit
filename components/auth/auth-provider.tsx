@@ -58,13 +58,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    // Get initial session
+    // Get initial session with timeout
     const getInitialSession = async () => {
       try {
+        // Set a timeout for the session fetch
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Session fetch timeout")), 10000),
+        )
+
         const {
           data: { session },
           error,
-        } = await supabase.auth.getSession()
+        } = (await Promise.race([sessionPromise, timeoutPromise])) as any
 
         if (error) {
           console.error("Error getting session:", error)
@@ -80,6 +86,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         console.error("Error getting initial session:", error)
+        // Don't block the app if session fetch fails
+        setUser(null)
+        setProfile(null)
       } finally {
         setLoading(false)
       }

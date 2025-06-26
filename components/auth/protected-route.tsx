@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useState, useEffect } from "react"
 
 import { useAuth } from "./auth-provider"
 import { AuthModal } from "./auth-modal"
@@ -13,16 +14,31 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
   const { user, profile, loading, isAdmin } = useAuth()
+  const [timeoutReached, setTimeoutReached] = useState(false)
 
-  if (loading) {
+  // Set a timeout for loading state
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTimeoutReached(true)
+    }, 15000) // 15 second timeout
+
+    return () => clearTimeout(timer)
+  }, [])
+
+  if (loading && !timeoutReached) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600">Loading authentication...</p>
+          <p className="text-sm text-gray-500 mt-2">This should only take a moment</p>
+        </div>
       </div>
     )
   }
 
-  if (!user) {
+  // If timeout reached and still loading, show auth modal
+  if ((loading && timeoutReached) || !user) {
     return <AuthModal />
   }
 
