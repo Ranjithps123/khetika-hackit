@@ -7,19 +7,31 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit, Trash2, Save, Loader2 } from "lucide-react"
-import { fetchThemes, createTheme, updateTheme, deleteTheme, type Theme } from "@/lib/supabase"
+import { Plus, Edit, Trash2, Save, Loader2, RefreshCw } from "lucide-react"
+import {
+  fetchThemes,
+  createTheme,
+  updateTheme,
+  deleteTheme,
+  getThemesSync,
+  preloadThemes,
+  type Theme,
+} from "@/lib/supabase"
 import { toast } from "@/hooks/use-toast"
 
 export default function ThemeManager() {
-  const [themes, setThemes] = useState<Theme[]>([])
+  const [themes, setThemes] = useState<Theme[]>(getThemesSync()) // Start with cached/default themes
   const [editingTheme, setEditingTheme] = useState<Theme | null>(null)
   const [isCreating, setIsCreating] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => {
+    // Preload themes in background
+    preloadThemes()
+
+    // Load fresh themes from database
     loadThemes()
   }, [])
 
@@ -28,11 +40,12 @@ export default function ThemeManager() {
     try {
       const data = await fetchThemes()
       setThemes(data)
+      console.log("Themes loaded:", data.length)
     } catch (error) {
       console.error("Failed to load themes:", error)
       toast({
-        title: "Error",
-        description: "Failed to load themes. Please try again.",
+        title: "Warning",
+        description: "Using default themes. Database connection may be slow.",
         variant: "destructive",
       })
     } finally {
@@ -139,85 +152,30 @@ export default function ThemeManager() {
     }
   }
 
-  // Default themes data
-  const defaultThemes = [
-    {
-      id: "1",
-      title: "Logistics Optimization",
-      description: "Route optimization for last-mile delivery to farmers/retailers",
-      icon: "🚚",
-      difficulty: "hard" as const,
-      prize_pool: 100000,
-      max_teams: 20,
-    },
-    {
-      id: "2",
-      title: "Inventory Management",
-      description: "Predictive inventory planning at Khetika warehouses",
-      icon: "📦",
-      difficulty: "medium" as const,
-      prize_pool: 75000,
-      max_teams: 25,
-    },
-    {
-      id: "3",
-      title: "Supply Chain Transparency",
-      description: "Blockchain-based traceability of produce",
-      icon: "🔍",
-      difficulty: "hard" as const,
-      prize_pool: 100000,
-      max_teams: 15,
-    },
-    {
-      id: "4",
-      title: "Demand & Price Forecasting",
-      description: "ML models to forecast demand based on season, region, weather",
-      icon: "📈",
-      difficulty: "hard" as const,
-      prize_pool: 125000,
-      max_teams: 20,
-    },
-    {
-      id: "5",
-      title: "Farmer Support Tools",
-      description: "Order tracking + WhatsApp bot for updates",
-      icon: "🛠️",
-      difficulty: "medium" as const,
-      prize_pool: 50000,
-      max_teams: 30,
-    },
-    {
-      id: "6",
-      title: "Admin Insights Dashboard",
-      description: "Unified dashboard with real-time order, delivery, and issue heatmaps",
-      icon: "📊",
-      difficulty: "medium" as const,
-      prize_pool: 75000,
-      max_teams: 25,
-    },
-  ]
-
-  // Use default themes if no themes loaded
-  const displayThemes = themes.length > 0 ? themes : defaultThemes
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-2xl font-bold">Hackathon Themes</h3>
           <p className="text-gray-600">Choose a theme that interests you and build innovative solutions</p>
+          {loading && (
+            <div className="flex items-center gap-2 mt-2">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+              <span className="text-sm text-blue-600">Loading latest themes...</span>
+            </div>
+          )}
         </div>
-        <Button onClick={createNewTheme}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Theme
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadThemes} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button onClick={createNewTheme}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Theme
+          </Button>
+        </div>
       </div>
-
-      {loading && (
-        <div className="flex justify-center items-center py-8">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-        </div>
-      )}
 
       {editingTheme && (
         <Card className="border-2 border-blue-200">
@@ -326,7 +284,7 @@ export default function ThemeManager() {
       )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {displayThemes.map((theme) => (
+        {themes.map((theme) => (
           <Card key={theme.id} className="hover:shadow-lg transition-shadow">
             <CardContent className="p-6">
               <div className="flex justify-between items-start mb-4">
@@ -364,10 +322,27 @@ export default function ThemeManager() {
               </div>
 
               <p className="text-gray-600 mb-4 text-sm leading-relaxed">{theme.description}</p>
+
+              <div className="flex justify-between items-center text-sm">
+                <Badge variant="outline">₹{theme.prize_pool.toLocaleString()}</Badge>
+                <span className="text-gray-500">Max {theme.max_teams} teams</span>
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {themes.length === 0 && !loading && (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <p className="text-gray-500 mb-4">No themes available</p>
+            <Button onClick={loadThemes}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Try Loading Again
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

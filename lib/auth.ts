@@ -54,12 +54,42 @@ export async function signOut() {
 // Simplified - no longer used in auth flow to prevent blocking
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   try {
+    console.log("Fetching user profile for:", userId)
+
     const { data, error } = await supabase.from("user_profiles").select("*").eq("id", userId).maybeSingle()
 
-    if (error || !data) {
+    if (error) {
+      console.error("Error fetching user profile:", error)
       return null
     }
 
+    if (!data) {
+      console.log("No profile found, creating one...")
+      // Try to create a profile if it doesn't exist
+      const { data: user } = await supabase.auth.getUser()
+      if (user.user) {
+        const newProfile = {
+          id: userId,
+          email: user.user.email || "",
+          full_name: user.user.user_metadata?.full_name || "",
+          user_type: "user" as const,
+        }
+
+        const { data: created, error: createError } = await supabase
+          .from("user_profiles")
+          .insert([newProfile])
+          .select()
+          .single()
+
+        if (!createError && created) {
+          console.log("Created new profile:", created)
+          return created
+        }
+      }
+      return null
+    }
+
+    console.log("Profile found:", data)
     return data
   } catch (error) {
     console.error("Error fetching user profile:", error)
@@ -95,6 +125,25 @@ export async function makeUserAdmin(userId: string): Promise<boolean> {
     return true
   } catch (error) {
     console.error("Error making user admin:", error)
+    return false
+  }
+}
+
+// Add function to check if user is admin
+export async function checkIsAdmin(userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.from("user_profiles").select("user_type").eq("id", userId).single()
+
+    if (error || !data) {
+      console.log("No profile found for admin check")
+      return false
+    }
+
+    const isAdmin = data.user_type === "admin"
+    console.log("Admin check result:", isAdmin, "for user:", userId)
+    return isAdmin
+  } catch (error) {
+    console.error("Error checking admin status:", error)
     return false
   }
 }

@@ -8,6 +8,7 @@ import ReportsView from "@/components/reports-view"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { Navbar } from "@/components/navbar"
 import { HackathonInfo } from "@/components/hackathon-info"
+import { DebugInfo } from "@/components/debug-info"
 import { useAuth } from "@/components/auth/auth-provider"
 
 export default function Home() {
@@ -33,6 +34,10 @@ export default function Home() {
 
           <HomeContent />
         </main>
+
+        {/* Debug info - only show in development or when needed */}
+        {(process.env.NODE_ENV === "development" ||
+          (typeof window !== "undefined" && window.location.search.includes("debug"))) && <DebugInfo />}
       </div>
     </ProtectedRoute>
   )

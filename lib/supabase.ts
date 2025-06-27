@@ -28,6 +28,8 @@ export type Submission = {
   application_url?: string | null
   gitlab_url?: string | null
   pdf_file_name?: string | null
+  pdf_url?: string | null
+  pdf_path?: string | null
   score?: number
   max_score?: number
   feedback?: string
@@ -43,85 +45,131 @@ export type Submission = {
   }
 }
 
+// Default themes that load immediately
+const DEFAULT_THEMES: Theme[] = [
+  {
+    id: "1",
+    title: "Logistics Optimization",
+    description: "Route optimization and delivery efficiency solutions",
+    icon: "🚚",
+    difficulty: "hard",
+    prize_pool: 100000,
+    max_teams: 20,
+  },
+  {
+    id: "2",
+    title: "Inventory Management",
+    description: "Smart inventory planning and management systems",
+    icon: "📦",
+    difficulty: "medium",
+    prize_pool: 75000,
+    max_teams: 25,
+  },
+  {
+    id: "3",
+    title: "Traceability of Products",
+    description: "Track products through the entire supply chain",
+    icon: "🔍",
+    difficulty: "medium",
+    prize_pool: 80000,
+    max_teams: 20,
+  },
+  {
+    id: "4",
+    title: "Smart Invoice & Document Extraction",
+    description: "AI-powered document processing and extraction",
+    icon: "🧾",
+    difficulty: "hard",
+    prize_pool: 90000,
+    max_teams: 15,
+  },
+  {
+    id: "5",
+    title: "Supply Chain Transparency",
+    description: "End-to-end visibility and transparency solutions",
+    icon: "🔍",
+    difficulty: "hard",
+    prize_pool: 100000,
+    max_teams: 15,
+  },
+  {
+    id: "6",
+    title: "Demand & Price Forecasting",
+    description: "Predictive analytics for demand planning and pricing",
+    icon: "📈",
+    difficulty: "hard",
+    prize_pool: 125000,
+    max_teams: 20,
+  },
+  {
+    id: "7",
+    title: "Admin Insights Dashboard",
+    description: "Real-time analytics and reporting dashboards",
+    icon: "📊",
+    difficulty: "medium",
+    prize_pool: 75000,
+    max_teams: 25,
+  },
+]
+
+// Cache for themes
+let themesCache: Theme[] | null = null
+let cacheTimestamp = 0
+const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+
 export async function fetchThemes(): Promise<Theme[]> {
+  // Return cached themes if available and fresh
+  if (themesCache && Date.now() - cacheTimestamp < CACHE_DURATION) {
+    console.log("Returning cached themes")
+    return themesCache
+  }
+
   try {
-    const { data, error } = await supabase.from("themes").select("*").order("created_at", { ascending: false })
+    console.log("Fetching themes from database...")
+
+    // Set a timeout for the database call
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Database timeout")), 3000)
+    })
+
+    const fetchPromise = supabase.from("themes").select("*").order("created_at", { ascending: false })
+
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
 
     if (error) {
-      console.error("Error fetching themes:", error)
-
-      // Return default themes if database fetch fails
-      return [
-        {
-          id: "1",
-          title: "Logistics Optimization",
-          description: "Route optimization and delivery efficiency solutions",
-          icon: "🚚",
-          difficulty: "hard" as const,
-          prize_pool: 100000,
-          max_teams: 20,
-        },
-        {
-          id: "2",
-          title: "Inventory Management",
-          description: "Smart inventory planning and management systems",
-          icon: "📦",
-          difficulty: "medium" as const,
-          prize_pool: 75000,
-          max_teams: 25,
-        },
-        {
-          id: "3",
-          title: "Traceability of Products",
-          description: "Track products through the entire supply chain",
-          icon: "🔍",
-          difficulty: "medium" as const,
-          prize_pool: 80000,
-          max_teams: 20,
-        },
-        {
-          id: "4",
-          title: "Smart Invoice & Document Extraction",
-          description: "AI-powered document processing and extraction",
-          icon: "🧾",
-          difficulty: "hard" as const,
-          prize_pool: 90000,
-          max_teams: 15,
-        },
-        {
-          id: "5",
-          title: "Supply Chain Transparency",
-          description: "End-to-end visibility and transparency solutions",
-          icon: "🔍",
-          difficulty: "hard" as const,
-          prize_pool: 100000,
-          max_teams: 15,
-        },
-        {
-          id: "6",
-          title: "Demand & Price Forecasting",
-          description: "Predictive analytics for demand planning and pricing",
-          icon: "📈",
-          difficulty: "hard" as const,
-          prize_pool: 125000,
-          max_teams: 20,
-        },
-        {
-          id: "7",
-          title: "Admin Insights Dashboard",
-          description: "Real-time analytics and reporting dashboards",
-          icon: "📊",
-          difficulty: "medium" as const,
-          prize_pool: 75000,
-          max_teams: 25,
-        },
-      ]
+      console.error("Error fetching themes from database:", error)
+      console.log("Falling back to default themes")
+      return DEFAULT_THEMES
     }
 
-    return data || []
+    if (data && data.length > 0) {
+      console.log("Successfully fetched themes from database:", data.length)
+      themesCache = data
+      cacheTimestamp = Date.now()
+      return data
+    } else {
+      console.log("No themes in database, using defaults")
+      return DEFAULT_THEMES
+    }
   } catch (error) {
     console.error("Error fetching themes:", error)
-    return []
+    console.log("Using default themes due to error")
+    return DEFAULT_THEMES
+  }
+}
+
+// Get themes immediately (synchronous) - returns defaults first
+export function getThemesSync(): Theme[] {
+  if (themesCache && Date.now() - cacheTimestamp < CACHE_DURATION) {
+    return themesCache
+  }
+  return DEFAULT_THEMES
+}
+
+// Preload themes in background
+export function preloadThemes(): void {
+  if (!themesCache || Date.now() - cacheTimestamp >= CACHE_DURATION) {
+    fetchThemes().catch(console.error)
   }
 }
 
@@ -133,6 +181,9 @@ export async function createTheme(theme: Omit<Theme, "id" | "created_at">): Prom
       console.error("Error creating theme:", error)
       return null
     }
+
+    // Invalidate cache
+    themesCache = null
 
     return data?.[0] || null
   } catch (error) {
@@ -150,6 +201,9 @@ export async function updateTheme(id: string, theme: Partial<Theme>): Promise<Th
       return null
     }
 
+    // Invalidate cache
+    themesCache = null
+
     return data?.[0] || null
   } catch (error) {
     console.error("Error updating theme:", error)
@@ -165,6 +219,9 @@ export async function deleteTheme(id: string): Promise<boolean> {
       console.error("Error deleting theme:", error)
       return false
     }
+
+    // Invalidate cache
+    themesCache = null
 
     return true
   } catch (error) {
@@ -224,6 +281,8 @@ export async function createSubmission(submission: Omit<Submission, "id" | "crea
       application_url: submission.application_url || null,
       gitlab_url: submission.gitlab_url || null,
       pdf_file_name: submission.pdf_file_name || null,
+      pdf_url: submission.pdf_url || null,
+      pdf_path: submission.pdf_path || null,
       status: submission.status || "submitted",
       score: submission.score || 0,
       max_score: submission.max_score || 100,
@@ -267,6 +326,22 @@ export async function createSubmission(submission: Omit<Submission, "id" | "crea
   } catch (error) {
     console.error("Error creating submission:", error)
     throw error
+  }
+}
+
+export async function updateSubmission(id: string, updates: Partial<Submission>): Promise<Submission | null> {
+  try {
+    const { data, error } = await supabase.from("submissions").update(updates).eq("id", id).select()
+
+    if (error) {
+      console.error("Error updating submission:", error)
+      return null
+    }
+
+    return data?.[0] || null
+  } catch (error) {
+    console.error("Error updating submission:", error)
+    return null
   }
 }
 

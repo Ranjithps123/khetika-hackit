@@ -6,7 +6,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Slider } from "@/components/ui/slider"
-import { CheckCircle, XCircle, AlertCircle, Users, FileText, Loader2, ExternalLink, GitBranch } from "lucide-react"
+import {
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Users,
+  FileText,
+  Loader2,
+  ExternalLink,
+  GitBranch,
+  Download,
+} from "lucide-react"
 import { fetchSubmissions, fetchUserSubmissions, updateSubmissionStatus } from "@/lib/supabase"
 import { useAuth } from "@/components/auth/auth-provider"
 import { toast } from "@/hooks/use-toast"
@@ -23,6 +33,8 @@ interface Submission {
   application_url?: string
   gitlab_url?: string
   pdf_file_name?: string
+  pdf_url?: string
+  pdf_path?: string
   score: number
   max_score: number
   feedback?: string
@@ -132,6 +144,18 @@ export default function SubmissionInterface() {
     return "Unknown User"
   }
 
+  const handleDownloadPDF = (submission: Submission) => {
+    if (submission.pdf_url) {
+      window.open(submission.pdf_url, "_blank")
+    } else {
+      toast({
+        title: "PDF Not Available",
+        description: "No PDF file was uploaded for this submission.",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div className="space-y-4">
@@ -192,7 +216,7 @@ export default function SubmissionInterface() {
                       Code
                     </Badge>
                   )}
-                  {submission.pdf_file_name && (
+                  {submission.pdf_url && (
                     <Badge variant="secondary" className="flex items-center gap-1">
                       <FileText className="h-3 w-3" />
                       PDF
@@ -208,6 +232,7 @@ export default function SubmissionInterface() {
                     <p>
                       Profile: {submission.user_profiles?.full_name || submission.user_profiles?.email || "Not linked"}
                     </p>
+                    {submission.pdf_url && <p>PDF: ✓ Available</p>}
                   </div>
                 )}
               </CardContent>
@@ -269,7 +294,22 @@ export default function SubmissionInterface() {
                         </a>
                       </Button>
                     )}
+                    {selectedSubmission.pdf_url && (
+                      <Button variant="outline" size="sm" onClick={() => handleDownloadPDF(selectedSubmission)}>
+                        <Download className="h-4 w-4 mr-2" />
+                        View PDF
+                      </Button>
+                    )}
                   </div>
+
+                  {selectedSubmission.pdf_file_name && !selectedSubmission.pdf_url && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-3">
+                      <p className="text-sm text-yellow-800">
+                        <strong>PDF File:</strong> {selectedSubmission.pdf_file_name} (Legacy - no download link
+                        available)
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {isAdmin && (
@@ -338,7 +378,7 @@ export default function SubmissionInterface() {
               </h3>
               <p className="text-gray-500">
                 {isAdmin
-                  ? "Choose a submission from the list to start the review process"
+                  ? "Choose a submission from the list to start the review process and access PDF files"
                   : "Choose a project from the list to view details and feedback"}
               </p>
             </CardContent>
