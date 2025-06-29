@@ -1,0 +1,13 @@
+[build]
+  command = "pnpm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "18" # or whatever version you're using
+  NODE_OPTIONS = "--max_old_space_size=8192"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
