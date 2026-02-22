@@ -11,7 +11,12 @@ if (typeof window === "undefined") {
   console.log("[v0] Key exists:", !!supabaseAnonKey)
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Create client with proper server/browser detection
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: typeof window !== "undefined", // Only persist sessions in browser
+  },
+})
 
 export type UserProfile = {
   id: string
