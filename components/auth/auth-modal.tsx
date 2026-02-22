@@ -35,17 +35,22 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
     setLoading(true)
 
     try {
+      console.log("[v0] Attempting sign in with email:", signInEmail)
       await signIn(signInEmail, signInPassword)
+      console.log("[v0] Sign in successful")
       toast({
         title: "Welcome back!",
         description: "You have successfully signed in.",
       })
       onSuccess?.()
     } catch (error: any) {
-      console.error("Sign in error:", error)
+      console.error("[v0] Sign in error:", error)
+      const errorMessage = error?.message || error?.status || "Failed to connect to authentication service"
       toast({
         title: "Sign In Failed",
-        description: error.message || "Please check your credentials and try again.",
+        description: errorMessage.includes("fetch")
+          ? "Network error. Please check your connection and try again."
+          : errorMessage,
         variant: "destructive",
       })
     } finally {
@@ -77,7 +82,9 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
     setLoading(true)
 
     try {
+      console.log("[v0] Attempting sign up with email:", signUpEmail)
       await signUp(signUpEmail, signUpPassword, signUpFullName)
+      console.log("[v0] Sign up successful")
       toast({
         title: "Account Created!",
         description: "Please check your email to verify your account, then sign in.",
@@ -89,10 +96,13 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
       setSignUpFullName("")
       setConfirmPassword("")
     } catch (error: any) {
-      console.error("Sign up error:", error)
+      console.error("[v0] Sign up error:", error)
+      const errorMessage = error?.message || error?.status || "Failed to connect to authentication service"
       toast({
         title: "Sign Up Failed",
-        description: error.message || "Please try again.",
+        description: errorMessage.includes("fetch")
+          ? "Network error. Please check your connection and try again."
+          : errorMessage,
         variant: "destructive",
       })
     } finally {
