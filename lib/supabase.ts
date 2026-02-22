@@ -1,11 +1,14 @@
 import { createClient } from "@supabase/supabase-js"
 
 // Create a single supabase client for the entire app
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Missing Supabase environment variables. Make sure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set.")
+// Log for debugging (remove after testing)
+if (typeof window === "undefined") {
+  console.log("[v0] Initializing Supabase client")
+  console.log("[v0] URL exists:", !!supabaseUrl)
+  console.log("[v0] Key exists:", !!supabaseAnonKey)
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
