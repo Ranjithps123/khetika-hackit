@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Loader2, User, Mail, Lock, UserPlus } from "lucide-react"
-import { signIn, signUp } from "@/lib/auth"
 import { toast } from "@/hooks/use-toast"
 
 interface AuthModalProps {
@@ -36,7 +35,17 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
 
     try {
       console.log("[v0] Attempting sign in with email:", signInEmail)
-      await signIn(signInEmail, signInPassword)
+      const response = await fetch("/api/auth/signin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: signInEmail, password: signInPassword }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Sign in failed")
+      }
+
       console.log("[v0] Sign in successful")
       toast({
         title: "Welcome back!",
@@ -44,13 +53,10 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
       })
       onSuccess?.()
     } catch (error: any) {
-      console.error("[v0] Sign in error:", error)
-      const errorMessage = error?.message || error?.status || "Failed to connect to authentication service"
+      console.error("[v0] Sign in error:", error.message)
       toast({
         title: "Sign In Failed",
-        description: errorMessage.includes("fetch")
-          ? "Network error. Please check your connection and try again."
-          : errorMessage,
+        description: error.message || "Failed to connect to authentication service",
         variant: "destructive",
       })
     } finally {
@@ -83,7 +89,17 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
 
     try {
       console.log("[v0] Attempting sign up with email:", signUpEmail)
-      await signUp(signUpEmail, signUpPassword, signUpFullName)
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: signUpEmail, password: signUpPassword, fullName: signUpFullName }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Sign up failed")
+      }
+
       console.log("[v0] Sign up successful")
       toast({
         title: "Account Created!",
@@ -96,13 +112,10 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
       setSignUpFullName("")
       setConfirmPassword("")
     } catch (error: any) {
-      console.error("[v0] Sign up error:", error)
-      const errorMessage = error?.message || error?.status || "Failed to connect to authentication service"
+      console.error("[v0] Sign up error:", error.message)
       toast({
         title: "Sign Up Failed",
-        description: errorMessage.includes("fetch")
-          ? "Network error. Please check your connection and try again."
-          : errorMessage,
+        description: error.message || "Failed to connect to authentication service",
         variant: "destructive",
       })
     } finally {
